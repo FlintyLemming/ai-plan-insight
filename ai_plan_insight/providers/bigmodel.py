@@ -20,8 +20,11 @@ class BigModelProvider(BaseProvider):
         }
 
     async def fetch_usage(self) -> dict:
+        self.log.info("Request: GET %s", self.API_URL)
         async with httpx.AsyncClient() as client:
             response = await client.get(self.API_URL, headers=self._headers)
+            self.log.info("Response: %d %s", response.status_code, response.reason_phrase)
+            self.log.debug("Response body: %s", response.text)
             response.raise_for_status()
             return response.json()
 

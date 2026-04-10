@@ -81,22 +81,27 @@ class AlibabaCloudProvider(BaseProvider):
 
     async def fetch_usage(self) -> dict:
         """通过 aliyun CLI 调用 BSS OpenAPI。"""
+        cmd = [
+            "aliyun",
+            "bssopenapi",
+            "QuerySavingsPlansInstance",
+            "--PageSize",
+            "1",
+            "--PageNum",
+            "1",
+        ]
+        self.log.info("Request: aliyun CLI %s", " ".join(cmd[1:]))
         result = subprocess.run(
-            [
-                "aliyun",
-                "bssopenapi",
-                "QuerySavingsPlansInstance",
-                "--PageSize",
-                "1",
-                "--PageNum",
-                "1",
-            ],
+            cmd,
             capture_output=True,
             text=True,
             timeout=30,
         )
         if result.returncode != 0:
+            self.log.error("Response: CLI failed (rc=%d): %s", result.returncode, result.stderr)
             raise RuntimeError(f"aliyun CLI failed: {result.stderr}")
+        self.log.info("Response: CLI success")
+        self.log.debug("Response body: %s", result.stdout)
         return json.loads(result.stdout)
 
     def parse_usage(self, raw_data: dict) -> UsageInfo:

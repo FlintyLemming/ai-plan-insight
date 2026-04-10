@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -11,6 +12,7 @@ class BaseProvider(ABC):
     def __init__(self, config: ProviderConfig) -> None:
         self.config = config
         self._headers: dict[str, str] = {}
+        self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @property
     @abstractmethod

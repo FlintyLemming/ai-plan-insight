@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import logging
 import sys
 
 
@@ -96,7 +97,12 @@ def main() -> None:
         import uvicorn
         from .web import app
 
-        uvicorn.run(app, host=args.host, port=args.port)
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     else:
         asyncio.run(_run_cli(args))
 
