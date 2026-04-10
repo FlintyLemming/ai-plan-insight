@@ -60,5 +60,10 @@ def format_usage_simple(usages: list[UsageInfo]) -> str:
         else:
             lines.append("\n  No rate limits available.")
 
+        if usage.balances:
+            lines.append("\n  Balances:")
+            for key, value in usage.balances.items():
+                lines.append(f"    - {key}: {value}")
+
     lines.append(f"\n{'=' * 60}")
     return "\n".join(lines)

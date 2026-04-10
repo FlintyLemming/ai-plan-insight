@@ -1,75 +1,66 @@
-import httpx
-import hmac
-import hashlib
-import base64
-import uuid
-from urllib.parse import quote_plus
-from datetime import datetime, timezone
+import json
+import subprocess
+from typing import Any
+
 from ..models import UsageInfo
 from ..config import ProviderConfig
 from .base import BaseProvider
 
 
 class AlibabaCloudProvider(BaseProvider):
-    """阿里云AI代金券余额 provider.
-
-    Queries the Aliyun BSS OpenAPI for savings plan balance (RestPoolValue).
-    """
-
-    ENDPOINT = "https://bssopenapi.aliyuncs.com"
+    """阿里云AI代金券余额 provider（通过 aliyun CLI）。"""
 
     @property
     def name(self) -> str:
         return "阿里云AI代金券"
 
     def authenticate(self) -> None:
-        self._access_key_id = self.config.access_key_id or ""
-        self._access_key_secret = self.config.access_key_secret or ""
-
-    def _sign_string(self, string_to_sign: str) -> str:
-        h = hmac.new(
-            (self._access_key_secret + "&").encode("utf-8"),
-            string_to_sign.encode("utf-8"),
-            hashlib.sha1,
+        """配置 aliyun CLI 的访问凭证。"""
+        access_key_id = self.config.access_key_id or ""
+        access_key_secret = self.config.access_key_secret or ""
+        subprocess.run(
+            [
+                "aliyun",
+                "configure",
+                "set",
+                "--mode",
+                "AK",
+                "--access-key-id",
+                access_key_id,
+                "--access-key-secret",
+                access_key_secret,
+                "--region",
+                "cn-hangzhou",
+                "--profile",
+                "default",
+            ],
+            capture_output=True,
+            timeout=10,
         )
-        return base64.b64encode(h.digest()).decode("utf-8")
-
-    def _build_signed_params(self) -> dict:
-        params = {
-            "Format": "JSON",
-            "Version": "2017-12-14",
-            "AccessKeyId": self._access_key_id,
-            "SignatureMethod": "HMAC-SHA1",
-            "SignatureNonce": str(uuid.uuid4()),
-            "SignatureVersion": "1.0",
-            "Timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "Action": "QuerySavingsPlansInstance",
-            "RegionId": "cn-hangzhou",
-            "PageSize": "20",
-            "PageNum": "1",
-            "Locale": "ZH",
-        }
-
-        sorted_params = sorted(params.items())
-        canonicalized_query = "&".join(
-            f"{quote_plus(str(k))}={quote_plus(str(v))}" for k, v in sorted_params
-        )
-        string_to_sign = f"GET&{quote_plus('/')}&{quote_plus(canonicalized_query)}"
-        params["Signature"] = self._sign_string(string_to_sign)
-
-        return params
 
     async def fetch_usage(self) -> dict:
-        params = self._build_signed_params()
-        async with httpx.AsyncClient() as client:
-            response = await client.get(self.ENDPOINT, params=params, timeout=30)
-            response.raise_for_status()
-            return response.json()
+        """通过 aliyun CLI 调用 BSS OpenAPI。"""
+        result = subprocess.run(
+            [
+                "aliyun",
+                "bssopenapi",
+                "QuerySavingsPlansInstance",
+                "--PageSize",
+                "1",
+                "--PageNum",
+                "1",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"aliyun CLI failed: {result.stderr}")
+        return json.loads(result.stdout)
 
     def parse_usage(self, raw_data: dict) -> UsageInfo:
         items = raw_data.get("Data", {}).get("Items", [])
         balances: dict[str, str] = {}
-        raw_rest = ""
 
         if items:
             item = items[0]
