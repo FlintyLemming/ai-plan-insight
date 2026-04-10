@@ -14,9 +14,15 @@ from .config_loader import load_config
 from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
+from .providers.alibaba_cloud import AlibabaCloudProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse
 
 logger = logging.getLogger(__name__)
+
+REFRESH_INTERVAL = 30
+
+_cached_results: list[UsageResponse] = []
+_last_updated: str | None = None
 
 
 def _build_provider(name: str, config: ProviderConfig):
@@ -27,6 +33,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return BigModelProvider(config)
         case "aiping":
             return AipingProvider(config)
+        case "alibaba_cloud":
+            return AlibabaCloudProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -65,7 +73,7 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
     )
 
 
-async def fetch_all_usage() -> list[UsageResponse]:
+async def _fetch_all_usage() -> list[UsageResponse]:
     config = load_config()
     tasks = []
     for name, pcfg in config.providers.items():
@@ -74,14 +82,24 @@ async def fetch_all_usage() -> list[UsageResponse]:
     return [r for r in results if isinstance(r, UsageResponse)]
 
 
-_last_updated: str | None = None
+async def _background_refresh():
+    global _cached_results, _last_updated
+    while True:
+        try:
+            results = await _fetch_all_usage()
+            _cached_results = results
+            _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+            logger.info("Background refresh done, %d providers fetched", len(results))
+        except Exception as e:
+            logger.error("Background refresh failed: %s", e)
+        await asyncio.sleep(REFRESH_INTERVAL)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _last_updated
-    _last_updated = None
+    task = asyncio.create_task(_background_refresh())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
@@ -89,10 +107,7 @@ app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
 
 @app.get("/api/usage", response_model=list[UsageResponse])
 async def get_usage():
-    global _last_updated
-    results = await fetch_all_usage()
-    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    return results
+    return _cached_results
 
 
 @app.get("/api/status")
