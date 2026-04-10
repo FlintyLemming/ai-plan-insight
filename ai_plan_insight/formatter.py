@@ -1,6 +1,8 @@
 from datetime import datetime
 from .models import UsageInfo, LimitDetail
 
+MONEY_BALANCE_KEYS = {"余额", "总余额", "赠送余额", "充值余额", "balance", "total", "gift", "recharge"}
+
 
 def _format_datetime(dt: datetime | None) -> str | None:
     if dt is None:
@@ -49,7 +51,7 @@ def format_usage_simple(usages: list[UsageInfo]) -> str:
                 pct_str = f" ({pct}%)" if pct is not None else ""
 
                 lines.append(
-                    f"    - {time_window}: {limit.used}/{limit.limit}{pct_str} (remaining: {limit.remaining})"
+                    f"    - {time_window}: {limit.used}/{limit.limit}{pct_str}"
                 )
                 if limit.reset_time:
                     lines.append(f"      Reset: {_format_datetime(limit.reset_time)}")
@@ -57,13 +59,14 @@ def format_usage_simple(usages: list[UsageInfo]) -> str:
                     lines.append("      Usage by model:")
                     for detail in limit.usage_details:
                         lines.append(f"        - {detail.model_code}: {detail.usage}")
-        else:
+        elif not usage.balances:
             lines.append("\n  No rate limits available.")
 
         if usage.balances:
             lines.append("\n  Balances:")
             for key, value in usage.balances.items():
-                lines.append(f"    - {key}: {value}")
+                display_value = f"¥{value}" if key in MONEY_BALANCE_KEYS else value
+                lines.append(f"    - {key}: {display_value}")
 
     lines.append(f"\n{'=' * 60}")
     return "\n".join(lines)

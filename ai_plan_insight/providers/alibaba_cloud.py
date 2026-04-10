@@ -1,5 +1,6 @@
 import json
 import subprocess
+from datetime import datetime
 from typing import Any
 
 from ..models import UsageInfo
@@ -9,6 +10,46 @@ from .base import BaseProvider
 
 class AlibabaCloudProvider(BaseProvider):
     """阿里云AI代金券余额 provider（通过 aliyun CLI）。"""
+
+    @staticmethod
+    def _parse_end_time(raw_end_time: Any) -> datetime | None:
+        if not raw_end_time:
+            return None
+
+        end_time = str(raw_end_time).strip()
+        if not end_time:
+            return None
+
+        normalized = end_time.replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _format_balance(raw_value: Any) -> str | None:
+        if raw_value is None:
+            return None
+
+        cleaned = str(raw_value).replace("¥", "").replace("CNY", "").strip()
+        return cleaned or None
+
+    @staticmethod
+    def _format_end_time(raw_end_time: Any) -> str | None:
+        parsed = AlibabaCloudProvider._parse_end_time(raw_end_time)
+        if parsed is None:
+            if raw_end_time is None:
+                return None
+            text = str(raw_end_time).strip()
+            return text or None
+        return parsed.date().isoformat()
+
+    @staticmethod
+    def _format_reset_date(raw_end_time: Any) -> str:
+        parsed = AlibabaCloudProvider._parse_end_time(raw_end_time)
+        if parsed is None:
+            return "每月重置"
+        return f"每月{parsed.day}日"
 
     @property
     def name(self) -> str:
@@ -64,20 +105,15 @@ class AlibabaCloudProvider(BaseProvider):
 
         if items:
             item = items[0]
-            raw_rest = item.get("RestPoolValue", "")
-            cleaned = raw_rest.replace("¥", "").replace("CNY", "").strip()
-            if cleaned:
-                balances["balance"] = cleaned
-            if "InstanceId" in item:
-                balances["instance_id"] = item["InstanceId"]
-            if "Status" in item:
-                balances["status"] = item["Status"]
-            if "Utilization" in item:
-                balances["utilization"] = str(item["Utilization"])
-            if "PoolValue" in item:
-                balances["total"] = str(item["PoolValue"])
-            if "EndTime" in item:
-                balances["end_time"] = item["EndTime"]
+            balance = self._format_balance(item.get("RestPoolValue"))
+            if balance:
+                balances["余额"] = balance
+
+            end_time = self._format_end_time(item.get("EndTime"))
+            if end_time:
+                balances["套餐结束日期"] = end_time
+
+            balances["余额重置日期"] = self._format_reset_date(item.get("EndTime"))
 
         return UsageInfo(
             provider=self.name,

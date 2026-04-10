@@ -139,17 +139,23 @@ function barClass(pct) {
 }
 
 const BALANCE_LABELS = {
+  '余额': '余额',
+  '套餐结束日期': '套餐结束日期',
+  '余额重置日期': '余额重置日期',
   total: '总余额',
   gift: '赠送余额',
   recharge: '充值余额',
 };
+
+const MONEY_BALANCE_KEYS = new Set(['余额', 'total', 'gift', 'recharge']);
 
 function renderCard(data) {
   // Balance card (no rate limits, just balances)
   if (data.balances && Object.keys(data.balances).length > 0 && !data.limits.length) {
     const balanceRows = Object.entries(data.balances).map(([key, val]) => {
       const label = BALANCE_LABELS[key] || key;
-      return `<div class="balance-row"><span>${label}</span><span>¥${val}</span></div>`;
+      const formattedValue = MONEY_BALANCE_KEYS.has(key) ? `¥${val}` : val;
+      return `<div class="balance-row"><span>${label}</span><span>${formattedValue}</span></div>`;
     }).join('');
 
     return `
@@ -176,7 +182,7 @@ function renderCard(data) {
       <div class="limit-row">
         <div class="limit-label">
           <span>${formatTimeWindow(l)}</span>
-          <span>${pctStr} · 剩余 ${l.remaining}</span>
+          <span>${pctStr}</span>
         </div>
         <div class="bar-bg">
           <div class="bar-fill ${barClass(pct || 0)}" style="width:${barWidth}%"></div>
