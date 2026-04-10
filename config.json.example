@@ -1,5 +1,14 @@
 {
   "providers": {
+    "kimi": {
+      "api_key": "YOUR_KIMI_API_KEY"
+    },
+    "bigmodel": {
+      "api_key": "YOUR_BIGMODEL_API_KEY"
+    },
+    "aiping": {
+      "api_key": "YOUR_AIPING_API_KEY"
+    },
     "alibaba_cloud": {
       "access_key_id": "YOUR_ACCESS_KEY_ID",
       "access_key_secret": "YOUR_ACCESS_KEY_SECRET"
