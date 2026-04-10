@@ -24,6 +24,8 @@ docker pull git.mitsea.com/flintylemming/ai-plan-insight:latest
 ```bash
 docker run -d \
   --name ai-plan-insight \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   -p 8765:8765 \
   -v ~/.ai_plan_insight.json:/root/.ai_plan_insight.json:ro \
   git.mitsea.com/flintylemming/ai-plan-insight:latest \
@@ -47,6 +49,11 @@ services:
     volumes:
       - ./config.json:/root/.ai_plan_insight.json:ro
     command: python -m ai_plan_insight --web --host 0.0.0.0 --port 8765
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
 在同目录下放置 `config.json`，然后：
