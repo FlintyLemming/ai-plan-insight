@@ -39,6 +39,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     from .providers.kimi import KimiProvider
     from .providers.bigmodel import BigModelProvider
     from .providers.aiping import AipingProvider
+    from .providers.alibaba_cloud import AlibabaCloudProvider
     from .formatter import format_usage_simple
 
     async def fetch_provider_usage(
@@ -52,6 +53,8 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = BigModelProvider(provider_config)
             case "aiping":
                 provider = AipingProvider(provider_config)
+            case "alibaba_cloud":
+                provider = AlibabaCloudProvider(provider_config)
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")
 
