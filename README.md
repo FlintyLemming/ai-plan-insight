@@ -32,6 +32,29 @@ docker run -d \
 
 容器启动后访问 `http://localhost:8765` 查看 Web 界面。
 
+### Docker Compose
+
+创建 `docker-compose.yaml`：
+
+```yaml
+services:
+  ai-plan-insight:
+    image: git.mitsea.com/flintylemming/ai-plan-insight:latest
+    container_name: ai-plan-insight
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./config.json:/root/.ai_plan_insight.json:ro
+    command: python -m ai_plan_insight --web --host 0.0.0.0 --port 8765
+```
+
+在同目录下放置 `config.json`，然后：
+
+```bash
+docker compose up -d
+```
+
 ### 配置文件
 
 在宿主机创建 `~/.ai_plan_insight.json`，按需填写要使用的 Provider，参考 [config.json.example](config.json.example)：
