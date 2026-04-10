@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: ai-plan-insight
+Version: 0.1.0
+Summary: Display remaining usage for AI coding plan subscriptions
+Requires-Python: >=3.12
+Requires-Dist: httpx>=0.27
+Requires-Dist: pydantic>=2.0
