@@ -2,8 +2,8 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 jobs:
   build:
@@ -33,4 +33,10 @@ jobs:
           push: true
           tags: |
             git.mitsea.com/flintylemming/ai-plan-insight:latest
-            git.mitsea.com/flintylemming/ai-plan-insight:${{ gitea.sha }}
+            git.mitsea.com/flintylemming/ai-plan-insight:${{ gitea.ref_name }}
+
+      - name: Link package to repository
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.REGISTRY_TOKEN }}" \
+            "${{ gitea.api_url }}/packages/FlintyLemming/container/ai-plan-insight/-/link/ai-plan-insight"
