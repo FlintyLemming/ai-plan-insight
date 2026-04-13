@@ -68,5 +68,12 @@ def format_usage_simple(usages: list[UsageInfo]) -> str:
                 display_value = f"¥{value}" if key in MONEY_BALANCE_KEYS else value
                 lines.append(f"    - {key}: {display_value}")
 
+        if usage.token_usage:
+            period_labels = {"today": "Today", "7d": "Last 7 days", "30d": "Last 30 days"}
+            lines.append("\n  Token Usage:")
+            for tu in usage.token_usage:
+                label = period_labels.get(tu.period, tu.period)
+                lines.append(f"    - {label}: {tu.total_tokens:,} tokens ({tu.total_calls:,} calls)")
+
     lines.append(f"\n{'=' * 60}")
     return "\n".join(lines)

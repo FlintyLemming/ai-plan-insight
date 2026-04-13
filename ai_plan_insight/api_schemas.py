@@ -17,9 +17,16 @@ class LimitResponse(BaseModel):
     limit_type: str = ""
 
 
+class TokenUsageResponse(BaseModel):
+    period: str
+    total_tokens: int
+    total_calls: int
+
+
 class UsageResponse(BaseModel):
     provider: str
     user_id: str | None = None
     membership_level: str | None = None
     limits: list[LimitResponse] = []
     balances: dict[str, str] = {}
+    token_usage: list[TokenUsageResponse] = []

@@ -15,7 +15,7 @@ from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.alibaba_cloud import AlibabaCloudProvider
-from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse
+from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,10 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
     raw = await provider.fetch_usage()
     parsed = provider.parse_usage(raw)
 
+    # Fetch token usage if supported
+    if hasattr(provider, "fetch_token_usage"):
+        parsed.token_usage = await provider.fetch_token_usage()
+
     limits = []
     for lim in parsed.limits:
         details = [
@@ -64,12 +68,18 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
             )
         )
 
+    token_usage = [
+        TokenUsageResponse(period=t.period, total_tokens=t.total_tokens, total_calls=t.total_calls)
+        for t in parsed.token_usage
+    ]
+
     return UsageResponse(
         provider=parsed.provider,
         user_id=parsed.user_id,
         membership_level=parsed.membership_level,
         limits=limits,
         balances=parsed.balances,
+        token_usage=token_usage,
     )
 
 

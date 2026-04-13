@@ -61,7 +61,12 @@ async def _run_cli(args: argparse.Namespace) -> None:
 
         provider.authenticate()
         raw_data = await provider.fetch_usage()
-        return provider.parse_usage(raw_data)
+        parsed = provider.parse_usage(raw_data)
+
+        if hasattr(provider, "fetch_token_usage"):
+            parsed.token_usage = await provider.fetch_token_usage()
+
+        return parsed
 
     try:
         config = load_config(args.config)
