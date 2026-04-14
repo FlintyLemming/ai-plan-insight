@@ -105,5 +105,47 @@ Web 模式下提供以下接口：
 
 - `GET /api/usage` — 返回所有 Provider 的用量数据
 - `GET /api/status` — 返回最近一次刷新时间
+- `POST /api/push/codex` — 接收 Codex 的用量推送
+- `POST /api/push/antigravity` — 接收 Antigravity 的用量推送
 
-数据每 30 秒自动刷新。
+后台数据每 30 秒自动刷新。客户端推送的数据将立刻被记录，并会在前端被合并展示。
+
+### 用量推送 (Push API)
+
+对于无法直接配置 API 密钥拉取的服务 (如 Codex 和 Antigravity)，你可以通过 API 形式，将用量数据主动 `POST` 给面板。
+
+#### 1. 推送 Codex 用量
+
+**参数说明：**
+分别传入 5 小时 和 一周 的使用百分比 (`_percentage`，不带百分号的数字) 及所对应的 Unix 重置时间戳 (`_reset_time`)。
+
+**Curl 示例：**
+```bash
+curl -X POST http://localhost:8765/api/push/codex \
+  -H "Content-Type: application/json" \
+  -d '{
+    "five_hours_percentage": 22.5,
+    "five_hours_reset_time": 1766000000,
+    "one_week_percentage": 10.0,
+    "one_week_reset_time": 1766000000
+  }'
+```
+
+#### 2. 推送 Antigravity 用量
+
+**参数说明：**
+分别传入 `gemini_3_1_pro`、`gemini_3_flash` 以及 `claude_series` 三款模型证书的 5 小时用量百分比 (`_percentage`) 和重置时间 (`_reset_time`，格式为标准的 ISO8601 字符串)。
+
+**Curl 示例：**
+```bash
+curl -X POST http://localhost:8765/api/push/antigravity \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gemini_3_1_pro_percentage": 5.0,
+    "gemini_3_1_pro_reset_time": "2024-04-15T00:00:00Z",
+    "gemini_3_flash_percentage": 0.5,
+    "gemini_3_flash_reset_time": "2024-04-15T00:00:00Z",
+    "claude_series_percentage": 90.5,
+    "claude_series_reset_time": "2024-04-15T00:00:00Z"
+  }'
+```

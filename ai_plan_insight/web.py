@@ -15,13 +15,14 @@ from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.alibaba_cloud import AlibabaCloudProvider
-from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse
+from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, CodexPushRequest, AntigravityPushRequest
 
 logger = logging.getLogger(__name__)
 
 REFRESH_INTERVAL = 30
 
 _cached_results: list[UsageResponse] = []
+_pushed_results: dict[str, UsageResponse] = {}
 _last_updated: str | None = None
 
 
@@ -115,9 +116,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
 
 
+def _provider_sort_key(resp: UsageResponse) -> int:
+    order = {
+        "Kimi API": 10,
+        "GLM Coding Plan": 20,
+        "Codex": 30,
+        "Antigravity": 40,
+        "AIPing": 50,
+        "Alibaba Cloud": 60,
+    }
+    return order.get(resp.provider, 100)
+
+
 @app.get("/api/usage", response_model=list[UsageResponse])
 async def get_usage():
-    return _cached_results
+    combined = _cached_results + list(_pushed_results.values())
+    combined.sort(key=_provider_sort_key)
+    return combined
 
 
 @app.get("/api/status")
@@ -131,3 +146,67 @@ async def index():
         content=INDEX_HTML,
         status_code=200,
     )
+
+
+@app.post("/api/push/codex")
+async def push_codex(req: CodexPushRequest):
+    global _last_updated, _pushed_results
+    _pushed_results["codex"] = UsageResponse(
+        provider="Codex",
+        limits=[
+            LimitResponse(
+                duration=5,
+                time_unit="hour",
+                limit="100",
+                used=str(int(req.five_hours_percentage)),
+                remaining=str(int(100 - req.five_hours_percentage)),
+                reset_time=datetime.fromtimestamp(req.five_hours_reset_time).astimezone().isoformat() if req.five_hours_reset_time else None,
+            ),
+            LimitResponse(
+                duration=1,
+                time_unit="week",
+                limit="100",
+                used=str(int(req.one_week_percentage)),
+                remaining=str(int(100 - req.one_week_percentage)),
+                reset_time=datetime.fromtimestamp(req.one_week_reset_time).astimezone().isoformat() if req.one_week_reset_time else None,
+            )
+        ]
+    )
+    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    return {"status": "ok"}
+
+
+@app.post("/api/push/antigravity")
+async def push_antigravity(req: AntigravityPushRequest):
+    global _last_updated, _pushed_results
+    _pushed_results["antigravity"] = UsageResponse(
+        provider="Antigravity",
+        limits=[
+            LimitResponse(
+                duration=5,
+                time_unit="小时 (Gemini 3.1 Pro)",
+                limit="100",
+                used=str(int(req.gemini_3_1_pro_percentage)),
+                remaining=str(int(100 - req.gemini_3_1_pro_percentage)),
+                reset_time=req.gemini_3_1_pro_reset_time,
+            ),
+            LimitResponse(
+                duration=5,
+                time_unit="小时 (Gemini 3 Flash)",
+                limit="100",
+                used=str(int(req.gemini_3_flash_percentage)),
+                remaining=str(int(100 - req.gemini_3_flash_percentage)),
+                reset_time=req.gemini_3_flash_reset_time,
+            ),
+            LimitResponse(
+                duration=5,
+                time_unit="小时 (Claude 系列)",
+                limit="100",
+                used=str(int(req.claude_series_percentage)),
+                remaining=str(int(100 - req.claude_series_percentage)),
+                reset_time=req.claude_series_reset_time,
+            ),
+        ]
+    )
+    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    return {"status": "ok"}
