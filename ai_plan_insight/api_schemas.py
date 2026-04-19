@@ -23,6 +23,12 @@ class TokenUsageResponse(BaseModel):
     total_calls: int
 
 
+class ModelStatResponse(BaseModel):
+    model: str
+    total_tokens: int
+    requests: int
+
+
 class UsageResponse(BaseModel):
     provider: str
     user_id: str | None = None
@@ -30,13 +36,8 @@ class UsageResponse(BaseModel):
     limits: list[LimitResponse] = []
     balances: dict[str, str] = {}
     token_usage: list[TokenUsageResponse] = []
+    model_stats: list[ModelStatResponse] = []
 
-
-class CodexPushRequest(BaseModel):
-    five_hours_percentage: float
-    five_hours_reset_time: int
-    one_week_percentage: float
-    one_week_reset_time: int
 
 
 class AntigravityPushRequest(BaseModel):

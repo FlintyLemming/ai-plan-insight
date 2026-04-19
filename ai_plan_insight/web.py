@@ -15,7 +15,9 @@ from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.alibaba_cloud import AlibabaCloudProvider
-from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, CodexPushRequest, AntigravityPushRequest
+from .providers.codex import CodexProvider
+from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest
+from .pocketbase_store import background_store_glm
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,8 @@ REFRESH_INTERVAL = 30
 _cached_results: list[UsageResponse] = []
 _pushed_results: dict[str, UsageResponse] = {}
 _last_updated: str | None = None
+_consecutive_failures: dict[str, int] = {}  # provider name -> consecutive fail count
+_prev_results: dict[str, UsageResponse] = {}  # last successful result per provider
 
 
 def _build_provider(name: str, config: ProviderConfig):
@@ -36,6 +40,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return AipingProvider(config)
         case "alibaba_cloud":
             return AlibabaCloudProvider(config)
+        case "codex":
+            return CodexProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -74,6 +80,11 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
         for t in parsed.token_usage
     ]
 
+    model_stats = [
+        ModelStatResponse(model=m.model, total_tokens=m.total_tokens, requests=m.requests)
+        for m in parsed.model_stats
+    ]
+
     return UsageResponse(
         provider=parsed.provider,
         user_id=parsed.user_id,
@@ -81,16 +92,28 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
         limits=limits,
         balances=parsed.balances,
         token_usage=token_usage,
+        model_stats=model_stats,
     )
 
 
 async def _fetch_all_usage() -> list[UsageResponse]:
+    global _consecutive_failures, _prev_results
     config = load_config()
-    tasks = []
-    for name, pcfg in config.providers.items():
-        tasks.append(_fetch_one(name, pcfg))
+    names = list(config.providers.keys())
+    tasks = [_fetch_one(name, config.providers[name]) for name in names]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    return [r for r in results if isinstance(r, UsageResponse)]
+
+    valid: list[UsageResponse] = []
+    for name, r in zip(names, results):
+        if isinstance(r, UsageResponse):
+            _consecutive_failures[name] = 0
+            _prev_results[name] = r
+            valid.append(r)
+        else:
+            _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
+            if _consecutive_failures[name] < 3 and name in _prev_results:
+                valid.append(_prev_results[name])
+    return valid
 
 
 async def _background_refresh():
@@ -108,9 +131,11 @@ async def _background_refresh():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_background_refresh())
+    task_refresh = asyncio.create_task(_background_refresh())
+    task_pb = asyncio.create_task(background_store_glm())
     yield
-    task.cancel()
+    task_refresh.cancel()
+    task_pb.cancel()
 
 
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
@@ -118,9 +143,9 @@ app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
 
 def _provider_sort_key(resp: UsageResponse) -> int:
     order = {
-        "Kimi API": 10,
+        "Codex 中转站": 10,
         "GLM Coding Plan": 20,
-        "Codex": 30,
+        "Kimi API": 30,
         "Antigravity": 40,
         "AIPing": 50,
         "Alibaba Cloud": 60,
@@ -146,34 +171,6 @@ async def index():
         content=INDEX_HTML,
         status_code=200,
     )
-
-
-@app.post("/api/push/codex")
-async def push_codex(req: CodexPushRequest):
-    global _last_updated, _pushed_results
-    _pushed_results["codex"] = UsageResponse(
-        provider="Codex",
-        limits=[
-            LimitResponse(
-                duration=5,
-                time_unit="hour",
-                limit="100",
-                used=str(int(req.five_hours_percentage)),
-                remaining=str(int(100 - req.five_hours_percentage)),
-                reset_time=datetime.fromtimestamp(req.five_hours_reset_time).astimezone().isoformat() if req.five_hours_reset_time else None,
-            ),
-            LimitResponse(
-                duration=1,
-                time_unit="week",
-                limit="100",
-                used=str(int(req.one_week_percentage)),
-                remaining=str(int(100 - req.one_week_percentage)),
-                reset_time=datetime.fromtimestamp(req.one_week_reset_time).astimezone().isoformat() if req.one_week_reset_time else None,
-            )
-        ]
-    )
-    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    return {"status": "ok"}
 
 
 @app.post("/api/push/antigravity")

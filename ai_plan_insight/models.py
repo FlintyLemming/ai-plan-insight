@@ -27,6 +27,13 @@ class TokenUsagePeriod(BaseModel):
     total_calls: int
 
 
+class ModelStat(BaseModel):
+    """Per-model usage statistics."""
+    model: str
+    total_tokens: int
+    requests: int
+
+
 class UsageInfo(BaseModel):
     """Standardized usage information across all providers."""
     provider: str
@@ -38,3 +45,5 @@ class UsageInfo(BaseModel):
     balances: dict[str, str] = {}  # e.g. {"total": "100.00", "gift": "10.50", "recharge": "89.50"}
     # Token usage by period (used by providers like BigModel)
     token_usage: list[TokenUsagePeriod] = []
+    # Per-model stats (used by providers like Codex)
+    model_stats: list[ModelStat] = []

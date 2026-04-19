@@ -160,6 +160,45 @@ function formatTokens(n) {
 }
 
 function renderCard(data) {
+  // Card with model_stats (e.g. Codex)
+  if (data.model_stats && data.model_stats.length > 0) {
+    const limit = data.limits[0];
+    const pct = limit ? (parseFloat(limit.used) / parseFloat(limit.limit) * 100) : 0;
+    const usedStr = limit ? `$${parseFloat(limit.used).toFixed(2)}` : '';
+    const limitStr = limit ? `$${parseFloat(limit.limit).toFixed(2)}` : '';
+
+    const balanceRows = Object.entries(data.balances || {}).map(([key, val]) =>
+      `<div class="balance-row"><span>${key}</span><span>${val}</span></div>`
+    ).join('');
+
+    const modelRows = data.model_stats.map(m =>
+      `<div class="balance-row">
+        <span>${m.model}</span>
+        <span>${formatTokens(m.total_tokens)} tokens · ${m.requests.toLocaleString()} 次</span>
+      </div>`
+    ).join('');
+
+    return `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">${data.provider}</span>
+        </div>
+        ${balanceRows}
+        <div class="limit-row" style="margin-top:0.75rem;">
+          <div class="limit-label">
+            <span>余额使用 (${usedStr} / ${limitStr})</span>
+            <span>${pct.toFixed(1)}%</span>
+          </div>
+          <div class="bar-bg">
+            <div class="bar-fill ${barClass(pct)}" style="width:${Math.min(pct, 100)}%"></div>
+          </div>
+        </div>
+        <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #334155;">
+          ${modelRows}
+        </div>
+      </div>`;
+  }
+
   // Balance card (no rate limits, just balances)
   if (data.balances && Object.keys(data.balances).length > 0 && !data.limits.length) {
     const balanceRows = Object.entries(data.balances).map(([key, val]) => {
