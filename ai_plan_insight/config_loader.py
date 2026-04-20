@@ -3,7 +3,7 @@ from pathlib import Path
 
 from .config import Config, ProviderConfig
 
-DEFAULT_CONFIG_PATH = Path.home() / ".ai_plan_insight.json"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
 
 def load_config(path: str | None = None) -> Config:

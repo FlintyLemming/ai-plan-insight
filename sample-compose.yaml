@@ -3,7 +3,5 @@ services:
     build: .
     ports:
       - "8000:8000"
-    volumes:
-      - ~/.ai_plan_insight.json:/root/.ai_plan_insight.json:ro
     command: python -m ai_plan_insight --web --host 0.0.0.0 --port 8000
     restart: unless-stopped

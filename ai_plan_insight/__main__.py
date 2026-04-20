@@ -103,14 +103,16 @@ def main() -> None:
 
     if args.web:
         import uvicorn
-        from .web import app
+        import ai_plan_insight.web as web_mod
+
+        web_mod._config_path = args.config
 
         logging.basicConfig(
             level=logging.DEBUG,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        uvicorn.run(web_mod.app, host=args.host, port=args.port, log_level="info")
     else:
         asyncio.run(_run_cli(args))
 

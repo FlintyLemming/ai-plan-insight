@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
 from .config import ProviderConfig
-from .config_loader import load_config
+from .config_loader import load_config, DEFAULT_CONFIG_PATH
 from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
@@ -28,6 +28,7 @@ _pushed_results: dict[str, UsageResponse] = {}
 _last_updated: str | None = None
 _consecutive_failures: dict[str, int] = {}  # provider name -> consecutive fail count
 _prev_results: dict[str, UsageResponse] = {}  # last successful result per provider
+_config_path: str | None = None  # set by main() when --config is provided
 
 
 def _build_provider(name: str, config: ProviderConfig):
@@ -98,7 +99,7 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
 
 async def _fetch_all_usage() -> list[UsageResponse]:
     global _consecutive_failures, _prev_results
-    config = load_config()
+    config = load_config(_config_path)
     names = list(config.providers.keys())
     tasks = [_fetch_one(name, config.providers[name]) for name in names]
     results = await asyncio.gather(*tasks, return_exceptions=True)

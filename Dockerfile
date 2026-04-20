@@ -19,6 +19,7 @@ RUN ARCH="${TARGETARCH:-amd64}" && \
     aliyun version
 
 COPY pyproject.toml ./
+COPY config.json ./
 RUN pip install --no-cache-dir .
 
 COPY ai_plan_insight/ ./ai_plan_insight/
