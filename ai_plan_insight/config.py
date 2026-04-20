@@ -7,6 +7,8 @@ class ProviderConfig(BaseModel):
     base_url: str = ""
     access_key_id: str = ""
     access_key_secret: str = ""
+    sso_session_id: str = ""
+    account_id: str = ""
 
 
 class PocketBaseConfig(BaseModel):

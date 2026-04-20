@@ -142,6 +142,7 @@ const BALANCE_LABELS = {
   '余额': '余额',
   '套餐结束日期': '套餐结束日期',
   '余额重置日期': '余额重置日期',
+  '套餐到期': '套餐到期',
   total: '总余额',
   gift: '赠送余额',
   recharge: '充值余额',
@@ -219,7 +220,11 @@ function renderCard(data) {
   // Rate-limit card
   const limitsHtml = data.limits.map(l => {
     const pct = l.limit ? Math.round(parseInt(l.used) * 100 / parseInt(l.limit)) : null;
+    const usedNum = parseInt(l.used);
+    const limitNum = parseInt(l.limit);
+    const showCount = limitNum > 200;  // Show count for large limits (e.g. call counts)
     const pctStr = pct !== null ? `${pct}%` : `${l.used}/${l.limit}`;
+    const countStr = showCount ? `${usedNum.toLocaleString()} / ${limitNum.toLocaleString()} 次` : '';
     const barWidth = pct !== null ? pct : 0;
     const detailsHtml = l.usage_details.length
       ? l.usage_details.map(d =>
@@ -231,7 +236,7 @@ function renderCard(data) {
       <div class="limit-row">
         <div class="limit-label">
           <span>${formatTimeWindow(l)}</span>
-          <span>${pctStr}</span>
+          <span>${showCount ? countStr : pctStr}</span>
         </div>
         <div class="bar-bg">
           <div class="bar-fill ${barClass(pct || 0)}" style="width:${barWidth}%"></div>
@@ -251,6 +256,14 @@ function renderCard(data) {
       + '</div>'
     : '';
 
+  const balanceHtml = data.balances && Object.keys(data.balances).length
+    ? '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #334155;">'
+      + Object.entries(data.balances).map(([key, val]) =>
+          `<div class="balance-row"><span>${BALANCE_LABELS[key] || key}</span><span>${MONEY_BALANCE_KEYS.has(key) ? '¥' : ''}${val}</span></div>`
+        ).join('')
+      + '</div>'
+    : '';
+
   return `
     <div class="card">
       <div class="card-header">
@@ -259,6 +272,7 @@ function renderCard(data) {
       </div>
       ${limitsHtml}
       ${tokenUsageHtml}
+      ${balanceHtml}
     </div>`;
 }
 

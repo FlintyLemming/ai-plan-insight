@@ -42,6 +42,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     from .providers.aiping import AipingProvider
     from .providers.alibaba_cloud import AlibabaCloudProvider
     from .providers.codex import CodexProvider
+    from .providers.xfyun import XfyunProvider
     from .formatter import format_usage_simple
 
     async def fetch_provider_usage(
@@ -59,6 +60,8 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = AlibabaCloudProvider(provider_config)
             case "codex":
                 provider = CodexProvider(provider_config)
+            case "xfyun":
+                provider = XfyunProvider(provider_config)
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")
 

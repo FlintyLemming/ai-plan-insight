@@ -16,6 +16,7 @@ from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.alibaba_cloud import AlibabaCloudProvider
 from .providers.codex import CodexProvider
+from .providers.xfyun import XfyunProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest
 from .pocketbase_store import background_store_glm
 
@@ -43,6 +44,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return AlibabaCloudProvider(config)
         case "codex":
             return CodexProvider(config)
+        case "xfyun":
+            return XfyunProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -148,6 +151,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "GLM Coding Plan": 20,
         "Kimi API": 30,
         "Antigravity": 40,
+        "讯飞星辰 Coding Plan": 45,
         "AIPing": 50,
         "Alibaba Cloud": 60,
     }
