@@ -11,7 +11,7 @@ class KimiProvider(BaseProvider):
 
     @property
     def name(self) -> str:
-        return "Kimi API"
+        return "Kimi Coding Plan"
 
     def authenticate(self) -> None:
         self._headers = {
@@ -83,7 +83,7 @@ class KimiProvider(BaseProvider):
         return UsageInfo(
             provider=self.name,
             user_id=user.get("userId", ""),
-            membership_level=user.get("membership", {}).get("level"),
+            membership_level="Andante",
             limits=limits,
             raw_response=raw_data,
         )

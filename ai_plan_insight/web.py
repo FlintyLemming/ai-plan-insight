@@ -149,9 +149,9 @@ def _provider_sort_key(resp: UsageResponse) -> int:
     order = {
         "Codex 中转站": 10,
         "GLM Coding Plan": 20,
-        "Kimi API": 30,
+        "讯飞星辰 Coding Plan": 25,
+        "Kimi Coding Plan": 30,
         "Antigravity": 40,
-        "讯飞星辰 Coding Plan": 45,
         "AIPing": 50,
         "Alibaba Cloud": 60,
     }
@@ -183,6 +183,7 @@ async def push_antigravity(req: AntigravityPushRequest):
     global _last_updated, _pushed_results
     _pushed_results["antigravity"] = UsageResponse(
         provider="Antigravity",
+        membership_level="Gemini Ultra",
         limits=[
             LimitResponse(
                 duration=5,
