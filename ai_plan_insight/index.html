@@ -246,7 +246,7 @@ function renderCard(data) {
       </div>`;
   }).join('');
 
-  const subtitle = [data.user_id, data.membership_level].filter(Boolean).join(' · ');
+  const subtitle = data.membership_level || data.user_id || '';
 
   const tokenUsageHtml = data.token_usage && data.token_usage.length
     ? '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #334155;">'
