@@ -53,5 +53,5 @@ class CursorPushRequest(BaseModel):
     membership: str
     billing_start: str
     billing_end: str
-    autoPercentUsed: float
-    apiPercentUsed: float
+    autoPercentUsed: float | None = None
+    apiPercentUsed: float | None = None

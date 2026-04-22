@@ -235,8 +235,8 @@ async def push_cursor(req: CursorPushRequest):
         provider="Cursor",
         membership_level=req.membership,
         limits=[
-            pct_to_limit("Auto + Composer 用量", req.autoPercentUsed),
-            pct_to_limit("API 用量", req.apiPercentUsed),
+            pct_to_limit("Auto + Composer 用量", req.autoPercentUsed or 0),
+            pct_to_limit("API 用量", req.apiPercentUsed or 0),
         ],
         balances={"到期时间": end_display},
     )
