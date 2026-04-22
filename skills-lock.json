@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "pocketbase": {
+      "source": "ikumasudo/pocketbase-skill",
+      "sourceType": "github",
+      "computedHash": "43ce560e563375f24fb2b81824085e263a4144445ac5a76a6c0fbc78df014e85"
+    }
+  }
+}

@@ -1,0 +1,220 @@
+[
+  {
+    "name": "glm_usage_snapshots",
+    "type": "base",
+    "fields": [
+      {
+        "name": "snapshot_at",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "provider",
+        "type": "text",
+        "required": true,
+        "default": "GLM Coding Plan"
+      },
+      {
+        "name": "membership_level",
+        "type": "text"
+      },
+      {
+        "name": "raw_quota_response",
+        "type": "json"
+      },
+      {
+        "name": "raw_model_usage_response",
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "name": "glm_usage_limits",
+    "type": "base",
+    "fields": [
+      {
+        "name": "snapshot",
+        "type": "relation",
+        "required": true,
+        "collectionId": "glm_usage_snapshots",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "limit_type",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "time_unit",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "duration",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "percentage",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "usage_limit",
+        "type": "number"
+      },
+      {
+        "name": "current_value",
+        "type": "number"
+      },
+      {
+        "name": "remaining",
+        "type": "number"
+      },
+      {
+        "name": "next_reset_time",
+        "type": "date"
+      }
+    ]
+  },
+  {
+    "name": "glm_limit_model_details",
+    "type": "base",
+    "fields": [
+      {
+        "name": "usage_limit",
+        "type": "relation",
+        "required": true,
+        "collectionId": "glm_usage_limits",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "model_code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "usage",
+        "type": "number",
+        "required": true
+      }
+    ]
+  },
+  {
+    "name": "glm_model_usage_totals",
+    "type": "base",
+    "fields": [
+      {
+        "name": "snapshot",
+        "type": "relation",
+        "required": true,
+        "collectionId": "glm_usage_snapshots",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "total_model_call_count",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "total_tokens_usage",
+        "type": "number",
+        "required": true
+      }
+    ]
+  },
+  {
+    "name": "glm_model_summary",
+    "type": "base",
+    "fields": [
+      {
+        "name": "snapshot",
+        "type": "relation",
+        "required": true,
+        "collectionId": "glm_usage_snapshots",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "model_name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "total_tokens",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "sort_order",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "name": "glm_hourly_usage",
+    "type": "base",
+    "fields": [
+      {
+        "name": "snapshot",
+        "type": "relation",
+        "required": true,
+        "collectionId": "glm_usage_snapshots",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "x_time",
+        "type": "json",
+        "required": true
+      },
+      {
+        "name": "model_call_count",
+        "type": "json",
+        "required": true
+      },
+      {
+        "name": "tokens_usage",
+        "type": "json",
+        "required": true
+      },
+      {
+        "name": "granularity",
+        "type": "text",
+        "required": true
+      }
+    ]
+  },
+  {
+    "name": "glm_hourly_model_usage",
+    "type": "base",
+    "fields": [
+      {
+        "name": "snapshot",
+        "type": "relation",
+        "required": true,
+        "collectionId": "glm_usage_snapshots",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "model_name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "sort_order",
+        "type": "number"
+      },
+      {
+        "name": "tokens_usage",
+        "type": "json",
+        "required": true
+      }
+    ]
+  }
+]
