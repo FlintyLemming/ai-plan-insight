@@ -248,18 +248,20 @@ function renderCard(data) {
 
   const subtitle = data.membership_level || data.user_id || '';
 
+  const balancesHtml = data.balances && Object.keys(data.balances).length
+    ? '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #334155;">'
+      + Object.entries(data.balances).map(([key, val]) => {
+          const label = BALANCE_LABELS[key] || key;
+          const formattedValue = MONEY_BALANCE_KEYS.has(key) ? `¥${val}` : val;
+          return `<div class="balance-row"><span>${label}</span><span>${formattedValue}</span></div>`;
+        }).join('')
+      + '</div>'
+    : '';
+
   const tokenUsageHtml = data.token_usage && data.token_usage.length
     ? '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #334155;">'
       + data.token_usage.map(t =>
           `<div class="balance-row"><span>${TOKEN_PERIOD_LABELS[t.period] || t.period}</span><span>${formatTokens(t.total_tokens)} tokens · ${t.total_calls.toLocaleString()} 次</span></div>`
-        ).join('')
-      + '</div>'
-    : '';
-
-  const balanceHtml = data.balances && Object.keys(data.balances).length
-    ? '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #334155;">'
-      + Object.entries(data.balances).map(([key, val]) =>
-          `<div class="balance-row"><span>${BALANCE_LABELS[key] || key}</span><span>${MONEY_BALANCE_KEYS.has(key) ? '¥' : ''}${val}</span></div>`
         ).join('')
       + '</div>'
     : '';
@@ -271,8 +273,8 @@ function renderCard(data) {
         ${subtitle ? `<span class="card-subtitle">${subtitle}</span>` : ''}
       </div>
       ${limitsHtml}
+      ${balancesHtml}
       ${tokenUsageHtml}
-      ${balanceHtml}
     </div>`;
 }
 

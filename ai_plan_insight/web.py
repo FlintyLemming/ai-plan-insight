@@ -16,8 +16,7 @@ from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.alibaba_cloud import AlibabaCloudProvider
 from .providers.codex import CodexProvider
-from .providers.xfyun import XfyunProvider
-from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest
+from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
 from .pocketbase_store import background_store_glm
 
 logger = logging.getLogger(__name__)
@@ -44,8 +43,6 @@ def _build_provider(name: str, config: ProviderConfig):
             return AlibabaCloudProvider(config)
         case "codex":
             return CodexProvider(config)
-        case "xfyun":
-            return XfyunProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -149,7 +146,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
     order = {
         "Codex 中转站": 10,
         "GLM Coding Plan": 20,
-        "讯飞星辰 Coding Plan": 25,
+        "Cursor": 25,
         "Kimi Coding Plan": 30,
         "Antigravity": 40,
         "AIPing": 50,
@@ -212,4 +209,45 @@ async def push_antigravity(req: AntigravityPushRequest):
         ]
     )
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    return {"status": "ok"}
+
+
+@app.post("/api/push/cursor")
+async def push_cursor(req: CursorPushRequest):
+    global _last_updated, _pushed_results
+    from datetime import datetime as dt
+
+    end_dt = dt.fromisoformat(req.billing_end.replace("Z", "+00:00"))
+    end_display = end_dt.strftime("%Y-%m-%d")
+
+    limits = [
+        LimitResponse(
+            duration=1,
+            time_unit=f"月 ({req.membership.capitalize()} 套餐)",
+            limit=str(req.plan_limit),
+            used=str(req.plan_used),
+            remaining=str(req.plan_limit - req.plan_used),
+            reset_time=req.billing_end,
+        )
+    ]
+
+    if req.on_demand_enabled and req.on_demand_limit is not None:
+        limits.append(
+            LimitResponse(
+                duration=1,
+                time_unit="月 (按量计费)",
+                limit=str(req.on_demand_limit),
+                used=str(req.on_demand_used or 0),
+                remaining=str(req.on_demand_limit - (req.on_demand_used or 0)),
+                reset_time=req.billing_end,
+            )
+        )
+
+    _pushed_results["cursor"] = UsageResponse(
+        provider="Cursor",
+        membership_level=req.membership.capitalize(),
+        limits=limits,
+        balances={"到期时间": end_display},
+    )
+    _last_updated = dt.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     return {"status": "ok"}

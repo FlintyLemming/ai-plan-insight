@@ -47,3 +47,14 @@ class AntigravityPushRequest(BaseModel):
     gemini_3_flash_reset_time: str
     claude_series_percentage: float
     claude_series_reset_time: str
+
+
+class CursorPushRequest(BaseModel):
+    membership: str
+    billing_start: str
+    billing_end: str
+    plan_used: int
+    plan_limit: int
+    on_demand_enabled: bool = False
+    on_demand_used: int | None = None
+    on_demand_limit: int | None = None
