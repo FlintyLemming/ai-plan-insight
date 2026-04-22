@@ -220,33 +220,24 @@ async def push_cursor(req: CursorPushRequest):
     end_dt = dt.fromisoformat(req.billing_end.replace("Z", "+00:00"))
     end_display = end_dt.strftime("%Y-%m-%d")
 
-    limits = [
-        LimitResponse(
+    def pct_to_limit(label: str, pct: float) -> LimitResponse:
+        return LimitResponse(
             duration=1,
-            time_unit=f"月 ({req.membership.capitalize()} 套餐)",
-            limit=str(req.plan_limit),
-            used=str(req.plan_used),
-            remaining=str(req.plan_limit - req.plan_used),
+            time_unit=label,
+            limit="100",
+            used=f"{pct:.2f}",
+            remaining=f"{100 - pct:.2f}",
             reset_time=req.billing_end,
-        )
-    ]
-
-    if req.on_demand_enabled and req.on_demand_limit is not None:
-        limits.append(
-            LimitResponse(
-                duration=1,
-                time_unit="月 (按量计费)",
-                limit=str(req.on_demand_limit),
-                used=str(req.on_demand_used or 0),
-                remaining=str(req.on_demand_limit - (req.on_demand_used or 0)),
-                reset_time=req.billing_end,
-            )
+            limit_type="PERCENT",
         )
 
     _pushed_results["cursor"] = UsageResponse(
         provider="Cursor",
-        membership_level=req.membership.capitalize(),
-        limits=limits,
+        membership_level=req.membership,
+        limits=[
+            pct_to_limit("Auto + Composer 用量", req.autoPercentUsed),
+            pct_to_limit("API 用量", req.apiPercentUsed),
+        ],
         balances={"到期时间": end_display},
     )
     _last_updated = dt.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
