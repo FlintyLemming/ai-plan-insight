@@ -9,7 +9,7 @@ class CodexProvider(BaseProvider):
     """Codex relay API provider."""
 
     DEFAULT_BASE_URL = "https://api2.ai.aiatechco.com"
-    HIDDEN_MODELS = {"gpt5.5", "gpt-5.5", "glm-5.5", "glm5.5"}
+    HIDDEN_MODELS = {"gpt5.5", "glm-5.5", "glm5.5"}
 
     @property
     def name(self) -> str:
