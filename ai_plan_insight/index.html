@@ -140,6 +140,12 @@ function barClass(pct) {
 
 const BALANCE_LABELS = {
   '余额': '余额',
+  '信用额度': '信用额度',
+  '总信用额度': '总信用额度',
+  '奖励金': '奖励金',
+  '保证金': '保证金',
+  '欠款': '欠款',
+  '币种': '币种',
   '套餐结束日期': '套餐结束日期',
   '余额重置日期': '余额重置日期',
   '套餐到期': '套餐到期',
@@ -148,7 +154,7 @@ const BALANCE_LABELS = {
   recharge: '充值余额',
 };
 
-const MONEY_BALANCE_KEYS = new Set(['余额', 'total', 'gift', 'recharge']);
+const MONEY_BALANCE_KEYS = new Set(['余额', '信用额度', '总信用额度', '奖励金', '保证金', '欠款', 'total', 'gift', 'recharge']);
 
 const TOKEN_PERIOD_LABELS = {
   today: '今日',
@@ -202,6 +208,7 @@ function renderCard(data) {
 
   // Balance card (no rate limits, just balances)
   if (data.balances && Object.keys(data.balances).length > 0 && !data.limits.length) {
+    const subtitle = data.membership_level || data.user_id || '';
     const balanceRows = Object.entries(data.balances).map(([key, val]) => {
       const label = BALANCE_LABELS[key] || key;
       const formattedValue = MONEY_BALANCE_KEYS.has(key) ? `¥${val}` : val;
@@ -212,6 +219,7 @@ function renderCard(data) {
       <div class="card">
         <div class="card-header">
           <span class="card-title">${data.provider}</span>
+          ${subtitle ? `<span class="card-subtitle">${subtitle}</span>` : ''}
         </div>
         ${balanceRows}
       </div>`;

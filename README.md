@@ -9,6 +9,7 @@
 | Codex | Codex 中转站用量查询（含模型维度统计） | `api_key` + `base_url` |
 | BigModel | 智谱 GLM Coding Plan | `api_key` |
 | Kimi | Kimi API 用量查询 | `api_key` |
+| Huawei Cloud | 华为云账户余额 | `access_key_id` + `access_key_secret` |
 | AIPing | AIPing 余额查询 | `api_key` |
 | Alibaba Cloud | 阿里云 AI 代金券 | `access_key_id` + `access_key_secret` |
 | Antigravity | Antigravity 用量（仅支持 Push） | — |
@@ -61,6 +62,11 @@ docker compose up -d
     },
     "kimi": {
       "api_key": "YOUR_KIMI_API_KEY"
+    },
+    "huawei_cloud": {
+      "user_name": "YOUR_HUAWEI_CLOUD_USER_NAME",
+      "access_key_id": "YOUR_HUAWEI_CLOUD_ACCESS_KEY_ID",
+      "access_key_secret": "YOUR_HUAWEI_CLOUD_SECRET_ACCESS_KEY"
     },
     "aiping": {
       "api_key": "YOUR_AIPING_API_KEY"

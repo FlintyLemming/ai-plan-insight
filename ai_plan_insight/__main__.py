@@ -41,6 +41,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     from .providers.bigmodel import BigModelProvider
     from .providers.aiping import AipingProvider
     from .providers.alibaba_cloud import AlibabaCloudProvider
+    from .providers.huawei_cloud import HuaweiCloudBssProvider
     from .providers.codex import CodexProvider
     from .formatter import format_usage_simple
 
@@ -57,6 +58,8 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = AipingProvider(provider_config)
             case "alibaba_cloud":
                 provider = AlibabaCloudProvider(provider_config)
+            case "huawei_cloud":
+                provider = HuaweiCloudBssProvider(provider_config)
             case "codex":
                 provider = CodexProvider(provider_config)
             case _:

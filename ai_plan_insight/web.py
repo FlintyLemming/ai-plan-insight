@@ -15,6 +15,7 @@ from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.alibaba_cloud import AlibabaCloudProvider
+from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
 from .pocketbase_store import background_store_glm
@@ -41,6 +42,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return AipingProvider(config)
         case "alibaba_cloud":
             return AlibabaCloudProvider(config)
+        case "huawei_cloud":
+            return HuaweiCloudBssProvider(config)
         case "codex":
             return CodexProvider(config)
         case _:
@@ -148,6 +151,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "GLM Coding Plan": 20,
         "Cursor": 25,
         "Kimi Coding Plan": 30,
+        "华为云余额": 35,
         "Antigravity": 40,
         "AIPing": 50,
         "Alibaba Cloud": 60,

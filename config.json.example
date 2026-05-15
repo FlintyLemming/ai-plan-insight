@@ -3,6 +3,11 @@
     "kimi": {
       "api_key": "YOUR_KIMI_API_KEY"
     },
+    "huawei_cloud": {
+      "user_name": "YOUR_HUAWEI_CLOUD_USER_NAME",
+      "access_key_id": "YOUR_HUAWEI_CLOUD_ACCESS_KEY_ID",
+      "access_key_secret": "YOUR_HUAWEI_CLOUD_SECRET_ACCESS_KEY"
+    },
     "bigmodel": {
       "api_key": "YOUR_BIGMODEL_API_KEY"
     },
