@@ -6,7 +6,8 @@
 
 | Provider | 说明 | 配置字段 |
 |---|---|---|
-| Codex | Codex 中转站用量查询（含模型维度统计） | `api_key` + `base_url` |
+| `codex` | 自购 Codex 中转站（Sub2API，quota 模式） | `api_key` + `base_url` |
+| `codex_security` | 白嫖 Codex Security 中转（Sub2API，钱包模式） | `api_key` + `base_url` |
 | BigModel | 智谱 GLM Coding Plan | `api_key` |
 | Kimi | Kimi API 用量查询 | `api_key` |
 | Huawei Cloud | 华为云账户余额 | `access_key_id` + `access_key_secret` |
@@ -55,7 +56,11 @@ docker compose up -d
   "providers": {
     "codex": {
       "api_key": "YOUR_CODEX_API_KEY",
-      "base_url": "https://your-relay.example.com"
+      "base_url": "https://api2.ai.aiatechco.com"
+    },
+    "codex_security": {
+      "api_key": "YOUR_CODEX_SECURITY_API_KEY",
+      "base_url": "https://tinykittens.online"
     },
     "bigmodel": {
       "api_key": "YOUR_BIGMODEL_API_KEY"

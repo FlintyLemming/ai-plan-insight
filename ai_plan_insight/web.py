@@ -16,7 +16,7 @@ from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.alibaba_cloud import AlibabaCloudProvider
 from .providers.huawei_cloud import HuaweiCloudBssProvider
-from .providers.codex import CodexProvider
+from .providers.codex import CodexProvider, CodexSecurityProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
 from .pocketbase_store import background_store_glm
 
@@ -46,6 +46,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return HuaweiCloudBssProvider(config)
         case "codex":
             return CodexProvider(config)
+        case "codex_security":
+            return CodexSecurityProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -147,7 +149,8 @@ app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
 
 def _provider_sort_key(resp: UsageResponse) -> int:
     order = {
-        "Codex 中转站": 10,
+        "自购 Codex 中转站": 10,
+        "白嫖 Codex Security 中转": 11,
         "GLM Coding Plan": 20,
         "Cursor": 25,
         "Kimi Coding Plan": 30,

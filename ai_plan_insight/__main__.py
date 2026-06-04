@@ -42,7 +42,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     from .providers.aiping import AipingProvider
     from .providers.alibaba_cloud import AlibabaCloudProvider
     from .providers.huawei_cloud import HuaweiCloudBssProvider
-    from .providers.codex import CodexProvider
+    from .providers.codex import CodexProvider, CodexSecurityProvider
     from .formatter import format_usage_simple
 
     async def fetch_provider_usage(
@@ -62,6 +62,8 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = HuaweiCloudBssProvider(provider_config)
             case "codex":
                 provider = CodexProvider(provider_config)
+            case "codex_security":
+                provider = CodexSecurityProvider(provider_config)
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")
 
