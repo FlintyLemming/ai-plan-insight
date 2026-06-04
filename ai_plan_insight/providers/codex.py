@@ -134,3 +134,34 @@ class CodexSecurityProvider(CodexProvider):
     @property
     def name(self) -> str:
         return "白嫖 Codex Security 中转"
+
+    def _parse_unrestricted(self, raw_data: dict) -> UsageInfo:
+        balance = float(raw_data.get("balance", raw_data.get("remaining", 0)) or 0)
+        total = (raw_data.get("usage") or {}).get("total") or {}
+        used = float(total.get("actual_cost", total.get("cost", 0)) or 0)
+        limit = used + balance
+
+        reset_time = self._parse_expires_at(raw_data)
+        balances: dict[str, str] = {}
+        if reset_time:
+            balances["套餐到期"] = reset_time.strftime("%Y-%m-%d")
+        days_left = raw_data.get("days_until_expiry")
+        if days_left is not None:
+            balances["剩余天数"] = f"{days_left} 天"
+
+        return UsageInfo(
+            provider=self.name,
+            balances=balances,
+            limits=[
+                LimitDetail(
+                    duration=0,
+                    time_unit="USD",
+                    limit=f"{limit:.2f}",
+                    used=f"{used:.2f}",
+                    remaining=f"{balance:.2f}",
+                    reset_time=reset_time,
+                )
+            ],
+            raw_response=raw_data,
+            model_stats=self._parse_model_stats(raw_data),
+        )

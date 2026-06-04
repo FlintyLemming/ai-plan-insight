@@ -14,7 +14,6 @@ from .config_loader import load_config, DEFAULT_CONFIG_PATH
 from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
-from .providers.alibaba_cloud import AlibabaCloudProvider
 from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
@@ -40,8 +39,6 @@ def _build_provider(name: str, config: ProviderConfig):
             return BigModelProvider(config)
         case "aiping":
             return AipingProvider(config)
-        case "alibaba_cloud":
-            return AlibabaCloudProvider(config)
         case "huawei_cloud":
             return HuaweiCloudBssProvider(config)
         case "codex":
@@ -157,7 +154,6 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "华为云余额": 35,
         "Antigravity": 40,
         "AIPing": 50,
-        "Alibaba Cloud": 60,
     }
     return order.get(resp.provider, 100)
 

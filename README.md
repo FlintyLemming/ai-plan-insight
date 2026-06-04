@@ -12,7 +12,6 @@
 | Kimi | Kimi API 用量查询 | `api_key` |
 | Huawei Cloud | 华为云账户余额 | `access_key_id` + `access_key_secret` |
 | AIPing | AIPing 余额查询 | `api_key` |
-| Alibaba Cloud | 阿里云 AI 代金券 | `access_key_id` + `access_key_secret` |
 | Antigravity | Antigravity 用量（仅支持 Push） | — |
 
 ## 部署
@@ -75,10 +74,6 @@ docker compose up -d
     },
     "aiping": {
       "api_key": "YOUR_AIPING_API_KEY"
-    },
-    "alibaba_cloud": {
-      "access_key_id": "YOUR_ACCESS_KEY_ID",
-      "access_key_secret": "YOUR_ACCESS_KEY_SECRET"
     }
   }
 }
