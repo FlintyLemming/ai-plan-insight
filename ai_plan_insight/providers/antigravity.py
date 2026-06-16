@@ -1,6 +1,6 @@
 import httpx
 from datetime import datetime
-from ..models import UsageInfo, LimitDetail, UsageDetail
+from ..models import UsageInfo, LimitDetail
 from .base import BaseProvider
 
 
@@ -139,10 +139,7 @@ class AntigravityProvider(BaseProvider):
                     remaining=str(min_pct),
                     reset_time=earliest_reset,
                     limit_type="PERCENT",
-                    usage_details=[
-                        UsageDetail(model_code=model_name, usage=pct)
-                        for model_name, pct, _ in sorted(entries, key=lambda x: x[1])
-                    ],
+                    usage_details=[]
                 )
             )
 
