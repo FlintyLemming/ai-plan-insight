@@ -143,6 +143,58 @@ class AntigravityProvider(BaseProvider):
                 )
             )
 
+        # Parse quota_groups for weekly usage buckets.
+        # group_display_name -> list of (remaining_fraction, reset_time)
+        weekly_buckets: dict[str, list[tuple[float, datetime | None]]] = {}
+
+        for account in accounts:
+            if not isinstance(account, dict):
+                continue
+            if account.get("disabled"):
+                continue
+
+            quota = account.get("quota")
+            if not isinstance(quota, dict):
+                continue
+
+            for group in quota.get("quota_groups", []):
+                if not isinstance(group, dict):
+                    continue
+                group_name = group.get("display_name", "")
+                for bucket in group.get("buckets", []):
+                    if not isinstance(bucket, dict):
+                        continue
+                    if bucket.get("window") != "weekly":
+                        continue
+                    remaining = bucket.get("remaining_fraction")
+                    if remaining is None:
+                        continue
+                    reset_time = self._parse_reset_time(bucket.get("reset_time"))
+                    weekly_buckets.setdefault(group_name, []).append(
+                        (float(remaining), reset_time)
+                    )
+
+        for group_name, entries in weekly_buckets.items():
+            min_remaining = min(fr for fr, _ in entries)
+            earliest_reset = min(
+                (rt for _, rt in entries if rt is not None),
+                default=None,
+            )
+            used_pct = (1 - min_remaining) * 100
+
+            limits.append(
+                LimitDetail(
+                    duration=1,
+                    time_unit=group_name,
+                    limit="100",
+                    used=f"{used_pct:.2f}",
+                    remaining=f"{min_remaining * 100:.2f}",
+                    reset_time=earliest_reset,
+                    limit_type="PERCENT",
+                    usage_details=[],
+                )
+            )
+
         return UsageInfo(
             provider=self.name,
             membership_level=" / ".join(sorted(membership_levels)) if membership_levels else None,
