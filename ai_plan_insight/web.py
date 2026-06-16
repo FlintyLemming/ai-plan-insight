@@ -16,6 +16,7 @@ from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
+from .providers.antigravity import AntigravityProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
 from .pocketbase_store import background_store_glm
 
@@ -45,6 +46,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return CodexProvider(config)
         case "codex_security":
             return CodexSecurityProvider(config)
+        case "antigravity":
+            return AntigravityProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -149,10 +152,10 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "自购 Codex 中转站": 10,
         "白嫖 Codex Security 中转": 11,
         "GLM Coding Plan": 20,
+        "Antigravity": 22,
         "Cursor": 25,
         "Kimi Coding Plan": 30,
         "华为云余额": 35,
-        "Antigravity": 40,
         "AIPing": 50,
     }
     return order.get(resp.provider, 100)

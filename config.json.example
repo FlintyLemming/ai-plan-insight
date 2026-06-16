@@ -13,6 +13,11 @@
     },
     "aiping": {
       "api_key": "YOUR_AIPING_API_KEY"
+    },
+    "antigravity": {
+      "api_key": "YOUR_ANTIGRAVITY_API_KEY",
+      "base_url": "http://your-antigravity-manager:8045",
+      "admin_password": "YOUR_ADMIN_PASSWORD_IF_SET"
     }
   }
 }

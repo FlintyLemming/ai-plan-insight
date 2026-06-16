@@ -8,6 +8,7 @@ class ProviderConfig(BaseModel):
     user_name: str = ""
     access_key_id: str = ""
     access_key_secret: str = ""
+    admin_password: str = ""
 
 
 class PocketBaseConfig(BaseModel):

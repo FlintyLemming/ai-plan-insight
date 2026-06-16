@@ -23,6 +23,9 @@ def _compute_percentage(used: str, limit: str) -> int | None:
 
 
 def _format_time_window(limit: LimitDetail) -> str:
+    if limit.limit_type == "PERCENT":
+        return limit.time_unit
+
     if limit.time_unit == "TOKENS_LIMIT":
         return "模型调用"
 
