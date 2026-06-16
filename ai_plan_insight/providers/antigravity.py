@@ -104,7 +104,7 @@ class AntigravityProvider(BaseProvider):
                 series: str | None = None
                 if name_lower.startswith("gemini"):
                     series = "Gemini"
-                elif name_lower.startswith("claude"):
+                elif name_lower.startswith("claude") or name_lower.startswith("gpt"):
                     series = "Claude"
 
                 if series is None:
@@ -133,7 +133,7 @@ class AntigravityProvider(BaseProvider):
             limits.append(
                 LimitDetail(
                     duration=1,
-                    time_unit=series,
+                    time_unit=f"{series} 模型 · 5小时",
                     limit="100",
                     used=str(100 - min_pct),
                     remaining=str(min_pct),
@@ -144,7 +144,12 @@ class AntigravityProvider(BaseProvider):
             )
 
         # Parse quota_groups for weekly usage buckets.
-        # group_display_name -> list of (remaining_fraction, reset_time)
+        # Map API group display names to our series labels.
+        _WEEKLY_LABELS = {
+            "Gemini Models": "Gemini 模型 · 周",
+            "Claude and GPT models": "Claude 模型 · 周",
+        }
+        # group_label -> list of (remaining_fraction, reset_time)
         weekly_buckets: dict[str, list[tuple[float, datetime | None]]] = {}
 
         for account in accounts:
@@ -160,7 +165,8 @@ class AntigravityProvider(BaseProvider):
             for group in quota.get("quota_groups", []):
                 if not isinstance(group, dict):
                     continue
-                group_name = group.get("display_name", "")
+                raw_name = group.get("display_name", "")
+                group_label = _WEEKLY_LABELS.get(raw_name, raw_name)
                 for bucket in group.get("buckets", []):
                     if not isinstance(bucket, dict):
                         continue
@@ -170,11 +176,11 @@ class AntigravityProvider(BaseProvider):
                     if remaining is None:
                         continue
                     reset_time = self._parse_reset_time(bucket.get("reset_time"))
-                    weekly_buckets.setdefault(group_name, []).append(
+                    weekly_buckets.setdefault(group_label, []).append(
                         (float(remaining), reset_time)
                     )
 
-        for group_name, entries in weekly_buckets.items():
+        for group_label, entries in weekly_buckets.items():
             min_remaining = min(fr for fr, _ in entries)
             earliest_reset = min(
                 (rt for _, rt in entries if rt is not None),
@@ -185,7 +191,7 @@ class AntigravityProvider(BaseProvider):
             limits.append(
                 LimitDetail(
                     duration=1,
-                    time_unit=group_name,
+                    time_unit=group_label,
                     limit="100",
                     used=f"{used_pct:.2f}",
                     remaining=f"{min_remaining * 100:.2f}",
