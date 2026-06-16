@@ -23,14 +23,18 @@ def _compute_percentage(used: str, limit: str) -> int | None:
 
 
 def _format_time_window(limit: LimitDetail) -> str:
-    if limit.limit_type == "TIME_LIMIT":
-        return "MCP 调用数量"
     if limit.time_unit == "TOKENS_LIMIT":
         return "模型调用"
+
     if limit.time_unit in ("hour", "minute", "day", "second", "week", "month", "year"):
-        return f"{limit.duration} {limit.time_unit}"
-    unit = limit.time_unit.replace("TIME_UNIT_", "").lower()
-    return f"{limit.duration} {unit}"
+        window = f"{limit.duration} {limit.time_unit}"
+    else:
+        unit = limit.time_unit.replace("TIME_UNIT_", "").lower()
+        window = f"{limit.duration} {unit}"
+
+    if limit.limit_type == "TIME_LIMIT":
+        return f"{window} MCP calls"
+    return window
 
 
 def format_usage_simple(usages: list[UsageInfo]) -> str:

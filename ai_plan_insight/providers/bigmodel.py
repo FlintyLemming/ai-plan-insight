@@ -83,6 +83,7 @@ class BigModelProvider(BaseProvider):
             4: "day",
             5: "month",
             6: "year",
+            7: "week",
         }
         return unit_names.get(unit, f"unit_{unit}")
 
@@ -98,6 +99,19 @@ class BigModelProvider(BaseProvider):
 
             duration = number
             time_unit = self._get_unit_name(unit)
+
+            # BigModel sometimes reports the weekly token limit as unit=year
+            # while the next reset time is only ~7 days away. Correct it.
+            if (
+                limit_type == "TOKENS_LIMIT"
+                and unit == 6
+                and number == 1
+                and reset_time is not None
+            ):
+                seconds_to_reset = (reset_time - datetime.now(timezone.utc)).total_seconds()
+                if 0 < seconds_to_reset <= 10 * 24 * 3600:
+                    duration = 1
+                    time_unit = "week"
 
             if limit_type == "TIME_LIMIT":
                 limit_val = str(limit.get("usage", 0))
@@ -119,7 +133,24 @@ class BigModelProvider(BaseProvider):
                     limit_type=limit_type,
                 )
             )
+
+        # Sort by time window length, putting TIME_LIMIT (MCP call count)
+        # at the end when windows overlap.
+        limits.sort(key=lambda l: (self._time_window_seconds(l), l.limit_type == "TIME_LIMIT"))
         return limits
+
+    @staticmethod
+    def _time_window_seconds(limit: LimitDetail) -> int:
+        multipliers = {
+            "second": 1,
+            "minute": 60,
+            "hour": 3600,
+            "day": 86400,
+            "week": 7 * 86400,
+            "month": 30 * 86400,
+            "year": 365 * 86400,
+        }
+        return limit.duration * multipliers.get(limit.time_unit, 0)
 
     def parse_usage(self, raw_data: dict) -> UsageInfo:
         limits = self._parse_limits(raw_data)

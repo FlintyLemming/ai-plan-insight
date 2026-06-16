@@ -110,11 +110,12 @@ const TIME_UNIT_LABELS = {
 };
 
 function formatTimeWindow(l) {
-  if (l.limit_type === 'TIME_LIMIT') return 'MCP 调用数量';
   const key = l.time_unit.toLowerCase();
   if (key === 'tokens_limit') return '模型调用';
   const label = TIME_UNIT_LABELS[key] || l.time_unit;
-  return `${l.duration} ${label}`;
+  const window = `${l.duration} ${label}`;
+  if (l.limit_type === 'TIME_LIMIT') return `${window} MCP 调用数量`;
+  return window;
 }
 
 function formatReset(resetTime) {
