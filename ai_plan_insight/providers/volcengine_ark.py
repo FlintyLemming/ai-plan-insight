@@ -71,7 +71,6 @@ class VolcEngineArkProvider(BaseProvider):
 
     def parse_usage(self, raw_data: dict) -> UsageInfo:
         result = raw_data.get("Result", {}) if isinstance(raw_data, dict) else {}
-        status = result.get("Status") or None
 
         limits: list[LimitDetail] = []
         for item in result.get("QuotaUsage", []):
@@ -104,7 +103,7 @@ class VolcEngineArkProvider(BaseProvider):
 
         return UsageInfo(
             provider=self.name,
-            membership_level=status,
+            membership_level="Pro",
             limits=limits,
             raw_response=raw_data,
         )
