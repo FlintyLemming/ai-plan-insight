@@ -18,6 +18,10 @@
       "api_key": "YOUR_ANTIGRAVITY_API_KEY",
       "base_url": "http://your-antigravity-manager:8045",
       "admin_password": "YOUR_ADMIN_PASSWORD_IF_SET"
+    },
+    "volcengine_ark": {
+      "access_key_id": "YOUR_VOLCENGINE_ACCESS_KEY_ID",
+      "access_key_secret": "YOUR_VOLCENGINE_SECRET_ACCESS_KEY"
     }
   }
 }
