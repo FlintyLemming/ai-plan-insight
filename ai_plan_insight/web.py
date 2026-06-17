@@ -16,6 +16,7 @@ from .providers.bigmodel import BigModelProvider
 from .providers.aiping import AipingProvider
 from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
+from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.antigravity import AntigravityProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
 from .pocketbase_store import background_store_glm
@@ -48,6 +49,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return CodexSecurityProvider(config)
         case "antigravity":
             return AntigravityProvider(config)
+        case "volcengine_ark":
+            return VolcEngineArkProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -151,6 +154,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
     order = {
         "自购 Codex 中转站": 10,
         "白嫖 Codex Security 中转": 11,
+        "火山方舟 Coding Plan": 12,
         "GLM Coding Plan": 20,
         "Antigravity": 22,
         "Cursor": 25,
