@@ -42,6 +42,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     from .providers.aiping import AipingProvider
     from .providers.huawei_cloud import HuaweiCloudBssProvider
     from .providers.codex import CodexProvider, CodexSecurityProvider
+    from .providers.volcengine_ark import VolcEngineArkProvider
     from .providers.antigravity import AntigravityProvider
     from .formatter import format_usage_simple
 
@@ -64,6 +65,8 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = CodexSecurityProvider(provider_config)
             case "antigravity":
                 provider = AntigravityProvider(provider_config)
+            case "volcengine_ark":
+                provider = VolcEngineArkProvider(provider_config)
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")
 
