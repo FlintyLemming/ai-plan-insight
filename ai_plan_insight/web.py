@@ -13,6 +13,7 @@ from .config import ProviderConfig
 from .config_loader import load_config, DEFAULT_CONFIG_PATH
 from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
+from .providers.bigmodel_international import BigModelInternationalProvider
 from .providers.aiping import AipingProvider
 from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
@@ -39,6 +40,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return KimiProvider(config)
         case "bigmodel":
             return BigModelProvider(config)
+        case "bigmodel_international":
+            return BigModelInternationalProvider(config)
         case "aiping":
             return AipingProvider(config)
         case "huawei_cloud":
@@ -156,6 +159,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "白嫖 Codex Security 中转": 11,
         "火山方舟 Coding Plan": 12,
         "GLM Coding Plan": 20,
+        "白嫖 GLM Coding Plan 国际版": 21,
         "Antigravity": 22,
         "Cursor": 25,
         "Kimi Coding Plan": 30,

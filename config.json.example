@@ -11,6 +11,9 @@
     "bigmodel": {
       "api_key": "YOUR_BIGMODEL_API_KEY"
     },
+    "bigmodel_international": {
+      "api_key": "YOUR_BIGMODEL_INTERNATIONAL_API_KEY"
+    },
     "aiping": {
       "api_key": "YOUR_AIPING_API_KEY"
     },

@@ -39,6 +39,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     from .providers.base import BaseProvider
     from .providers.kimi import KimiProvider
     from .providers.bigmodel import BigModelProvider
+    from .providers.bigmodel_international import BigModelInternationalProvider
     from .providers.aiping import AipingProvider
     from .providers.huawei_cloud import HuaweiCloudBssProvider
     from .providers.codex import CodexProvider, CodexSecurityProvider
@@ -55,6 +56,8 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = KimiProvider(provider_config)
             case "bigmodel":
                 provider = BigModelProvider(provider_config)
+            case "bigmodel_international":
+                provider = BigModelInternationalProvider(provider_config)
             case "aiping":
                 provider = AipingProvider(provider_config)
             case "huawei_cloud":
