@@ -107,10 +107,6 @@ class MimoTokenPlanProvider(BaseProvider):
         if compensation_item and float(compensation_item.get("used", 0)) > 0:
             limits.append(self._limit_from_item("补偿额度", compensation_item))
 
-        month_item = self._item(usage_root.get("monthUsage"), "month_total_token")
-        if month_item:
-            limits.append(self._limit_from_item("本月", month_item))
-
         balances: dict[str, str] = {}
         if detail_root.get("currentPeriodEnd"):
             balances["有效期至"] = str(detail_root["currentPeriodEnd"])
