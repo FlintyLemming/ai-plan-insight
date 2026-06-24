@@ -19,6 +19,7 @@ from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.antigravity import AntigravityProvider
+from .providers.mimo_token_plan import MimoTokenPlanProvider, MimoCookieExpiredError
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
 from .pocketbase_store import background_store_glm
 
@@ -32,6 +33,10 @@ _last_updated: str | None = None
 _consecutive_failures: dict[str, int] = {}  # provider name -> consecutive fail count
 _prev_results: dict[str, UsageResponse] = {}  # last successful result per provider
 _config_path: str | None = None  # set by main() when --config is provided
+
+_PROVIDER_DISPLAY_NAMES = {
+    "mimo_token_plan": "小米 MiMo Token Plan",
+}
 
 
 def _build_provider(name: str, config: ProviderConfig):
@@ -54,6 +59,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return AntigravityProvider(config)
         case "volcengine_ark":
             return VolcEngineArkProvider(config)
+        case "mimo_token_plan":
+            return MimoTokenPlanProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -123,8 +130,13 @@ async def _fetch_all_usage() -> list[UsageResponse]:
             valid.append(r)
         else:
             _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
-            if _consecutive_failures[name] < 3 and name in _prev_results:
+            display_name = _PROVIDER_DISPLAY_NAMES.get(name, name)
+            if isinstance(r, MimoCookieExpiredError):
+                valid.append(UsageResponse(provider=display_name, error=str(r)))
+            elif _consecutive_failures[name] < 3 and name in _prev_results:
                 valid.append(_prev_results[name])
+            else:
+                valid.append(UsageResponse(provider=display_name, error=str(r)))
     return valid
 
 
@@ -161,6 +173,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "GLM Coding Plan": 20,
         "白嫖 GLM Coding Plan 国际版": 21,
         "Antigravity": 22,
+        "小米 MiMo Token Plan": 23,
         "Cursor": 25,
         "Kimi Coding Plan": 30,
         "华为云余额": 35,

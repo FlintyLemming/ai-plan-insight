@@ -25,6 +25,9 @@
     "volcengine_ark": {
       "access_key_id": "YOUR_VOLCENGINE_ACCESS_KEY_ID",
       "access_key_secret": "YOUR_VOLCENGINE_SECRET_ACCESS_KEY"
+    },
+    "mimo_token_plan": {
+      "cookie": "api-platform_serviceToken=...; userId=...; api-platform_slh=...; api-platform_ph=..."
     }
   }
 }

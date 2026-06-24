@@ -168,6 +168,16 @@ function formatTokens(n) {
 }
 
 function renderCard(data) {
+  if (data.error) {
+    return `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">${data.provider}</span>
+        </div>
+        <div class="limit-meta">${data.error}</div>
+      </div>`;
+  }
+
   // Card with model_stats (e.g. Codex)
   if (data.model_stats && data.model_stats.length > 0) {
     const limit = data.limits[0];

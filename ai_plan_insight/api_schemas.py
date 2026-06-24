@@ -37,6 +37,7 @@ class UsageResponse(BaseModel):
     balances: dict[str, str] = {}
     token_usage: list[TokenUsageResponse] = []
     model_stats: list[ModelStatResponse] = []
+    error: str | None = None
 
 
 

@@ -45,6 +45,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     from .providers.codex import CodexProvider, CodexSecurityProvider
     from .providers.volcengine_ark import VolcEngineArkProvider
     from .providers.antigravity import AntigravityProvider
+    from .providers.mimo_token_plan import MimoTokenPlanProvider
     from .formatter import format_usage_simple
 
     async def fetch_provider_usage(
@@ -70,6 +71,8 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = AntigravityProvider(provider_config)
             case "volcengine_ark":
                 provider = VolcEngineArkProvider(provider_config)
+            case "mimo_token_plan":
+                provider = MimoTokenPlanProvider(provider_config)
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")
 
