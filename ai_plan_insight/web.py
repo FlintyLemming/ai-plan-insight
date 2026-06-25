@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -25,9 +25,11 @@ from .pocketbase_store import background_store_glm
 logger = logging.getLogger(__name__)
 
 REFRESH_INTERVAL = 30
+PUSH_TTL_SECONDS = 30 * 60  # 推送数据若 30 分钟内未继续推送则视为过期，整块不显示
 
 _cached_results: list[UsageResponse] = []
 _pushed_results: dict[str, UsageResponse] = {}
+_pushed_at: dict[str, datetime] = {}  # provider key -> 最近一次推送时间，用于 TTL 过滤
 _last_updated: str | None = None
 _consecutive_failures: dict[str, int] = {}  # provider name -> consecutive fail count
 _prev_results: dict[str, UsageResponse] = {}  # last successful result per provider
@@ -177,7 +179,13 @@ def _provider_sort_key(resp: UsageResponse) -> int:
 
 @app.get("/api/usage", response_model=list[UsageResponse])
 async def get_usage():
-    combined = _cached_results + list(_pushed_results.values())
+    now = datetime.now().astimezone()
+    cutoff = now - timedelta(seconds=PUSH_TTL_SECONDS)
+    valid_pushed = [
+        r for key, r in _pushed_results.items()
+        if _pushed_at.get(key) and _pushed_at[key] >= cutoff
+    ]
+    combined = _cached_results + valid_pushed
     combined.sort(key=_provider_sort_key)
     return combined
 
@@ -197,7 +205,7 @@ async def index():
 
 @app.post("/api/push/antigravity")
 async def push_antigravity(req: AntigravityPushRequest):
-    global _last_updated, _pushed_results
+    global _last_updated, _pushed_results, _pushed_at
     _pushed_results["antigravity"] = UsageResponse(
         provider="Antigravity",
         membership_level="Gemini Ultra",
@@ -229,12 +237,13 @@ async def push_antigravity(req: AntigravityPushRequest):
         ]
     )
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["antigravity"] = datetime.now().astimezone()
     return {"status": "ok"}
 
 
 @app.post("/api/push/cursor")
 async def push_cursor(req: CursorPushRequest):
-    global _last_updated, _pushed_results
+    global _last_updated, _pushed_results, _pushed_at
     from datetime import datetime as dt
 
     end_dt = dt.fromisoformat(req.billing_end.replace("Z", "+00:00"))
@@ -261,12 +270,13 @@ async def push_cursor(req: CursorPushRequest):
         balances={"到期时间": end_display},
     )
     _last_updated = dt.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["cursor"] = dt.now().astimezone()
     return {"status": "ok"}
 
 
 @app.post("/api/push/mimo")
 async def push_mimo(req: MimoPushRequest):
-    global _last_updated, _pushed_results
+    global _last_updated, _pushed_results, _pushed_at
     _pushed_results["mimo_token_plan"] = UsageResponse(
         provider=req.provider,
         user_id=req.user_id,
@@ -275,4 +285,5 @@ async def push_mimo(req: MimoPushRequest):
         balances=req.balances,
     )
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["mimo_token_plan"] = datetime.now().astimezone()
     return {"status": "ok"}

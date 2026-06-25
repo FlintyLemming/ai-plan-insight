@@ -119,6 +119,8 @@ Web 模式下提供以下接口：
 
 后台数据每 30 秒自动刷新。若某个 Provider 连续 3 次取数据失败，才会从页面消失。
 
+对于通过 Push API 推送数据的 Provider（Cursor、MiMo、Antigravity），数据保留 30 分钟。若 30 分钟内未收到新的推送，对应区块将从页面消失，直到再次推送。
+
 ### 用量推送 (Push API)
 
 对于无法直接配置 API 密钥拉取的服务（如 Cursor、MiMo、Antigravity），可以通过 Push API 将用量数据主动推送给面板。
