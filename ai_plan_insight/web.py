@@ -20,7 +20,7 @@ from .providers.codex import CodexProvider, CodexSecurityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.antigravity import AntigravityProvider
 from .providers.mimo_token_plan import MimoTokenPlanProvider, MimoCookieExpiredError
-from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest
+from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest, MimoPushRequest
 from .pocketbase_store import background_store_glm
 
 logger = logging.getLogger(__name__)
@@ -268,4 +268,18 @@ async def push_cursor(req: CursorPushRequest):
         balances={"到期时间": end_display},
     )
     _last_updated = dt.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    return {"status": "ok"}
+
+
+@app.post("/api/push/mimo")
+async def push_mimo(req: MimoPushRequest):
+    global _last_updated, _pushed_results
+    _pushed_results["mimo_token_plan"] = UsageResponse(
+        provider=req.provider,
+        user_id=req.user_id,
+        membership_level=req.membership_level,
+        limits=req.limits,
+        balances=req.balances,
+    )
+    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     return {"status": "ok"}

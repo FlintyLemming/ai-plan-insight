@@ -56,3 +56,11 @@ class CursorPushRequest(BaseModel):
     billing_end: str
     autoPercentUsed: float | None = None
     apiPercentUsed: float | None = None
+
+
+class MimoPushRequest(BaseModel):
+    provider: str = "小米 MiMo Token Plan"
+    user_id: str | None = None
+    membership_level: str | None = None
+    limits: list[LimitResponse] = []
+    balances: dict[str, str] = {}
