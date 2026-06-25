@@ -14,8 +14,7 @@
 
 | Provider | 获取方式 | 说明 | Agent 项目地址 |
 |---|---|---|---|
-| Codex (自购中转站) | ✅ 直接获取 | Sub2API，quota 模式，配置 `api_key` + `base_url` | — |
-| Codex Security (白嫖中转) | ✅ 直接获取 | Sub2API，钱包模式，配置 `api_key` + `base_url` | — |
+| Codex 中转 | ✅ 直接获取 | Sub2API，配置 `api_key` + `base_url` | — |
 | 火山方舟 Coding Plan | ✅ 直接获取 | 配置 `access_key_id` + `access_key_secret` | — |
 | GLM Coding Plan (智谱) | ✅ 直接获取 | 配置 `api_key` | — |
 | GLM Coding Plan 国际版 | ✅ 直接获取 | 配置 `api_key` | — |
