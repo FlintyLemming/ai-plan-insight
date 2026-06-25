@@ -19,7 +19,6 @@ from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.antigravity import AntigravityProvider
-from .providers.mimo_token_plan import MimoTokenPlanProvider, MimoCookieExpiredError
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest, MimoPushRequest
 from .pocketbase_store import background_store_glm
 
@@ -34,9 +33,7 @@ _consecutive_failures: dict[str, int] = {}  # provider name -> consecutive fail 
 _prev_results: dict[str, UsageResponse] = {}  # last successful result per provider
 _config_path: str | None = None  # set by main() when --config is provided
 
-_PROVIDER_DISPLAY_NAMES = {
-    "mimo_token_plan": "小米 MiMo Token Plan",
-}
+_PROVIDER_DISPLAY_NAMES = {}
 
 
 def _build_provider(name: str, config: ProviderConfig):
@@ -59,8 +56,6 @@ def _build_provider(name: str, config: ProviderConfig):
             return AntigravityProvider(config)
         case "volcengine_ark":
             return VolcEngineArkProvider(config)
-        case "mimo_token_plan":
-            return MimoTokenPlanProvider(config)
         case _:
             raise ValueError(f"Unknown provider: {name}")
 
@@ -131,9 +126,7 @@ async def _fetch_all_usage() -> list[UsageResponse]:
         else:
             _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
             display_name = _PROVIDER_DISPLAY_NAMES.get(name, name)
-            if isinstance(r, MimoCookieExpiredError):
-                valid.append(UsageResponse(provider=display_name, error=str(r)))
-            elif _consecutive_failures[name] < 3 and name in _prev_results:
+            if _consecutive_failures[name] < 3 and name in _prev_results:
                 valid.append(_prev_results[name])
             else:
                 valid.append(UsageResponse(provider=display_name, error=str(r)))
