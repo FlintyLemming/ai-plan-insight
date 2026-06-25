@@ -1,19 +1,26 @@
 # AI Plan Insight
 
-聚合查看多个 AI 编码订阅的用量和余额信息，支持 CLI 和 Web 两种使用方式。
+收集各家 AI Coding Plan 用量的获取方式，聚合查看多个 AI 编码订阅的用量和余额信息。
 
-## 支持的 Provider
+你可以直接部署本项目作为统一用量面板使用，也可以把本项目拉下来给 Coding Agent 直接参考各家 Plan 的用量获取方式。
 
-| Provider | 说明 | 配置字段 |
-|---|---|---|
-| `codex` | 自购 Codex 中转站（Sub2API，quota 模式） | `api_key` + `base_url` |
-| `codex_security` | 白嫖 Codex Security 中转（Sub2API，钱包模式） | `api_key` + `base_url` |
-| `volcengine_ark` | 火山方舟 Coding Plan | `access_key_id` + `access_key_secret` |
-| BigModel | 智谱 GLM Coding Plan | `api_key` |
-| Kimi | Kimi API 用量查询 | `api_key` |
-| Huawei Cloud | 华为云账户余额 | `access_key_id` + `access_key_secret` |
-| AIPing | AIPing 余额查询 | `api_key` |
-| Antigravity | Antigravity 用量（仅支持 Push） | — |
+支持 CLI 和 Web 两种使用方式。
+
+## 用量获取方式一览
+
+| Provider | 获取方式 | 说明 | Agent 项目地址 |
+|---|---|---|---|
+| Codex (自购中转站) | ✅ 直接获取 | Sub2API，quota 模式，配置 `api_key` + `base_url` | — |
+| Codex Security (白嫖中转) | ✅ 直接获取 | Sub2API，钱包模式，配置 `api_key` + `base_url` | — |
+| 火山方舟 Coding Plan | ✅ 直接获取 | 配置 `access_key_id` + `access_key_secret` | — |
+| GLM Coding Plan (智谱) | ✅ 直接获取 | 配置 `api_key` | — |
+| GLM Coding Plan 国际版 | ✅ 直接获取 | 配置 `api_key` | — |
+| Kimi Coding Plan | ✅ 直接获取 | 配置 `api_key` | — |
+| 华为云余额 | ✅ 直接获取 | 配置 `access_key_id` + `access_key_secret` | — |
+| AIPing | ✅ 直接获取 | 配置 `api_key` | — |
+| Cursor | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [cursor-usage-agent](https://github.com/FlintyLemming/cursor-usage-agent) |
+| MiMo Token Plan | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [mimo-usage-agent](https://github.com/FlintyLemming/mimo-usage-agent) |
+| Antigravity | 🤖 需要本地 Agent | 使用 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager)，但原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
 
 ## 部署
 
@@ -103,13 +110,44 @@ Web 模式下提供以下接口：
 
 - `GET /api/usage` — 返回所有 Provider 的用量数据
 - `GET /api/status` — 返回最近一次刷新时间
+- `POST /api/push/cursor` — 接收 Cursor 的用量推送
+- `POST /api/push/mimo` — 接收 MiMo 的用量推送
 - `POST /api/push/antigravity` — 接收 Antigravity 的用量推送
 
 后台数据每 30 秒自动刷新。若某个 Provider 连续 3 次取数据失败，才会从页面消失。
 
 ### 用量推送 (Push API)
 
-对于无法直接配置 API 密钥拉取的服务（如 Antigravity），可以通过 Push API 将用量数据主动推送给面板。
+对于无法直接配置 API 密钥拉取的服务（如 Cursor、MiMo、Antigravity），可以通过 Push API 将用量数据主动推送给面板。
+
+#### 推送 Cursor 用量
+
+传入 `membership`、`autoPercentUsed`、`apiPercentUsed` 和 `billingEnd`。
+
+```bash
+curl -X POST http://localhost:8000/api/push/cursor \
+  -H "Content-Type: application/json" \
+  -d '{
+    "membership": "Pro",
+    "autoPercentUsed": 45.5,
+    "apiPercentUsed": 12.3,
+    "billingEnd": "2026-07-01T00:00:00Z"
+  }'
+```
+
+#### 推送 MiMo 用量
+
+```bash
+curl -X POST http://localhost:8000/api/push/mimo \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "小米 MiMo Token Plan",
+    "user_id": "your_user_id",
+    "membership_level": "Premium",
+    "limits": [],
+    "balances": {}
+  }'
+```
 
 #### 推送 Antigravity 用量
 
