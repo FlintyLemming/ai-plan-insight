@@ -6,6 +6,10 @@
 
 支持 CLI 和 Web 两种使用方式。
 
+## 预览
+
+![Web 面板预览](docs/screenshot.png)
+
 ## 用量获取方式一览
 
 | Provider | 获取方式 | 说明 | Agent 项目地址 |
