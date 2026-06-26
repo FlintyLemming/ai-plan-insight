@@ -1,6 +1,6 @@
 import httpx
 from datetime import datetime, timezone, timedelta
-from ..models import UsageInfo, LimitDetail, TokenUsagePeriod
+from ..models import UsageInfo, LimitDetail, TokenUsagePeriod, HistoryModelUsage, HistoryUsagePeriod
 from .base import BaseProvider
 
 
@@ -43,6 +43,81 @@ class BigModelProvider(BaseProvider):
             self.log.warning("model-usage API error: %s", data.get("msg"))
             return None
         return data
+
+    @staticmethod
+    def _normalize_int_series(values: list | None, length: int) -> list[int]:
+        normalized: list[int] = []
+        for value in (values or [])[:length]:
+            try:
+                normalized.append(int(value or 0))
+            except (TypeError, ValueError):
+                normalized.append(0)
+        if len(normalized) < length:
+            normalized.extend([0] * (length - len(normalized)))
+        return normalized
+
+    @staticmethod
+    def _optional_total_calls(item: dict) -> int | None:
+        for key in ("totalModelCallCount", "modelCallCount", "totalCalls", "calls", "requests"):
+            if key in item and item.get(key) is not None:
+                try:
+                    return int(item.get(key) or 0)
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    def _parse_history_usage(self, raw_data: dict | None) -> HistoryUsagePeriod | None:
+        if not raw_data or raw_data.get("code") != 200:
+            return None
+
+        data = raw_data.get("data", {})
+        x_time = [str(item) for item in data.get("x_time", [])]
+        length = len(x_time)
+        tokens_usage = self._normalize_int_series(data.get("tokensUsage"), length)
+        model_call_count = self._normalize_int_series(data.get("modelCallCount"), length)
+
+        total_usage = data.get("totalUsage", {})
+        total_tokens = int(total_usage.get("totalTokensUsage") or sum(tokens_usage))
+        total_calls = int(total_usage.get("totalModelCallCount") or sum(model_call_count))
+
+        models: list[HistoryModelUsage] = []
+        for item in data.get("modelDataList", []):
+            model_name = str(item.get("modelName") or item.get("model") or "Unknown")
+            model_tokens = self._normalize_int_series(item.get("tokensUsage"), length)
+            model_total_tokens = int(
+                item.get("totalTokens")
+                or item.get("totalTokensUsage")
+                or sum(model_tokens)
+            )
+            models.append(
+                HistoryModelUsage(
+                    model_name=model_name,
+                    total_tokens=model_total_tokens,
+                    total_calls=self._optional_total_calls(item),
+                    tokens_usage=model_tokens,
+                )
+            )
+
+        return HistoryUsagePeriod(
+            period="30d",
+            granularity=str(data.get("granularity") or "daily"),
+            x_time=x_time,
+            tokens_usage=tokens_usage,
+            model_call_count=model_call_count,
+            total_tokens=total_tokens,
+            total_calls=total_calls,
+            models=models,
+        )
+
+    async def fetch_history_usage(self, days: int = 30) -> HistoryUsagePeriod | None:
+        """Fetch daily model token usage for the last `days` calendar days."""
+        now = datetime.now(timezone(timedelta(hours=8)))
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = today_start - timedelta(days=days - 1)
+
+        async with httpx.AsyncClient() as client:
+            data = await self._fetch_model_usage(client, start, now)
+        return self._parse_history_usage(data)
 
     async def fetch_token_usage(self) -> list[TokenUsagePeriod]:
         """Fetch token usage for today, last 7 days, and last 30 days."""
