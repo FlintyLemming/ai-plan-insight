@@ -39,6 +39,67 @@
   }
   .card-title { font-size: 1.15rem; font-weight: 600; }
   .card-subtitle { font-size: 0.8rem; color: #94a3b8; }
+  .card-header-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .view-toggle {
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #cbd5e1;
+    border-radius: 999px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+  .view-toggle:hover { border-color: #38bdf8; color: #e0f2fe; }
+  .history-summary {
+    font-size: 0.9rem;
+    color: #cbd5e1;
+    margin-bottom: 0.75rem;
+  }
+  .history-chart {
+    width: 100%;
+    height: 180px;
+    margin-bottom: 0.75rem;
+  }
+  .history-axis { stroke: #334155; stroke-width: 1; }
+  .history-grid-line { stroke: #273449; stroke-width: 1; }
+  .history-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .history-model-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    padding: 0.28rem 0;
+    color: #cbd5e1;
+    border-bottom: 1px solid #334155;
+  }
+  .history-model-row:last-child { border-bottom: none; }
+  .history-model-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .history-model-name span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .history-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    flex: 0 0 auto;
+  }
+  .empty-history {
+    color: #64748b;
+    font-size: 0.85rem;
+    padding: 1.5rem 0;
+    text-align: center;
+  }
   .limit-row { margin-bottom: 1rem; }
   .balance-row {
     display: flex;
@@ -163,6 +224,104 @@ const TOKEN_PERIOD_LABELS = {
   '30d': '近 30 天',
 };
 
+const GLM_HISTORY_PROVIDERS = new Set(['GLM Coding Plan', '白嫖 GLM Coding Plan 国际版']);
+const HISTORY_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#e879f9'];
+const cardViewModes = {};
+let latestUsageData = [];
+
+function hasHistoryUsage(data) {
+  return GLM_HISTORY_PROVIDERS.has(data.provider) && data.history_usage;
+}
+
+function formatCount(n) {
+  return Number(n || 0).toLocaleString('en-US');
+}
+
+function normalizeSeries(values, length) {
+  const source = Array.isArray(values) ? values : [];
+  const result = source.slice(0, length).map(v => Number(v || 0));
+  while (result.length < length) result.push(0);
+  return result;
+}
+
+function buildPolyline(values, maxValue, width, height, padX, padY) {
+  if (!values.length) return '';
+  const plotWidth = width - padX * 2;
+  const plotHeight = height - padY * 2;
+  return values.map((value, idx) => {
+    const x = values.length === 1 ? width / 2 : padX + (idx * plotWidth / (values.length - 1));
+    const y = height - padY - ((value / maxValue) * plotHeight);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+}
+
+function renderHistoryView(data) {
+  const history = data.history_usage;
+  const dates = history && Array.isArray(history.x_time) ? history.x_time : [];
+  const models = history && Array.isArray(history.models) ? history.models : [];
+  const visibleModels = models.filter(m => Number(m.total_tokens || 0) > 0 || normalizeSeries(m.tokens_usage, dates.length).some(v => v > 0));
+
+  if (!history || !dates.length || !visibleModels.length) {
+    return `<div class="empty-history">暂无近 30 天历史数据</div>`;
+  }
+
+  const width = 520;
+  const height = 180;
+  const padX = 24;
+  const padY = 18;
+  const normalizedModels = visibleModels.map((model, idx) => ({
+    ...model,
+    color: HISTORY_COLORS[idx % HISTORY_COLORS.length],
+    tokens_usage: normalizeSeries(model.tokens_usage, dates.length),
+  }));
+  const maxValue = Math.max(1, ...normalizedModels.flatMap(m => m.tokens_usage));
+  const lines = normalizedModels.map(model => `
+    <polyline class="history-line" stroke="${model.color}" points="${buildPolyline(model.tokens_usage, maxValue, width, height, padX, padY)}"></polyline>
+  `).join('');
+  const modelRows = normalizedModels.map(model => {
+    const calls = model.total_calls === null || model.total_calls === undefined
+      ? ''
+      : ` · ${formatCount(model.total_calls)} 次`;
+    return `<div class="history-model-row">
+      <span class="history-model-name"><span class="history-dot" style="background:${model.color}"></span><span>${model.model_name}</span></span>
+      <span>${formatTokens(model.total_tokens)} tokens${calls}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="history-summary">近 30 天：${formatTokens(history.total_tokens)} tokens · ${formatCount(history.total_calls)} 次调用</div>
+    <svg class="history-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="近 30 天模型 token 用量折线图">
+      <line class="history-grid-line" x1="${padX}" y1="${padY}" x2="${width - padX}" y2="${padY}"></line>
+      <line class="history-grid-line" x1="${padX}" y1="${height / 2}" x2="${width - padX}" y2="${height / 2}"></line>
+      <line class="history-axis" x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}"></line>
+      ${lines}
+    </svg>
+    <div>${modelRows}</div>`;
+}
+
+function renderHeader(data, subtitle) {
+  const canToggle = hasHistoryUsage(data);
+  const mode = cardViewModes[data.provider] || 'usage';
+  const toggle = canToggle
+    ? `<button class="view-toggle" data-view-toggle="${data.provider}" onclick="toggleCardView('${data.provider.replace(/'/g, "\\'")}')">${mode === 'history' ? '用量' : '历史'}</button>`
+    : '';
+  const right = subtitle || toggle
+    ? `<span class="card-header-right">${subtitle ? `<span class="card-subtitle">${subtitle}</span>` : ''}${toggle}</span>`
+    : '';
+  return `<div class="card-header"><span class="card-title">${data.provider}</span>${right}</div>`;
+}
+
+function renderGrid(data) {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = data.map(renderCard).join('');
+  grid.style.display = 'grid';
+}
+
+function toggleCardView(provider) {
+  cardViewModes[provider] = cardViewModes[provider] === 'history' ? 'usage' : 'history';
+  renderGrid(latestUsageData);
+}
+
 function formatTokens(n) {
   return (n / 1000000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' M';
 }
@@ -198,9 +357,7 @@ function renderCard(data) {
 
     return `
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">${data.provider}</span>
-        </div>
+        ${renderHeader(data, '')}
         ${balanceRows}
         <div class="limit-row" style="margin-top:0.75rem;">
           <div class="limit-label">
@@ -228,10 +385,7 @@ function renderCard(data) {
 
     return `
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">${data.provider}</span>
-          ${subtitle ? `<span class="card-subtitle">${subtitle}</span>` : ''}
-        </div>
+        ${renderHeader(data, subtitle)}
         ${balanceRows}
       </div>`;
   }
@@ -295,13 +449,10 @@ function renderCard(data) {
 
   return `
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">${data.provider}</span>
-        ${subtitle ? `<span class="card-subtitle">${subtitle}</span>` : ''}
-      </div>
-      ${limitsHtml}
-      ${balancesHtml}
-      ${tokenUsageHtml}
+      ${renderHeader(data, subtitle)}
+      ${hasHistoryUsage(data) && cardViewModes[data.provider] === 'history'
+        ? renderHistoryView(data)
+        : `${limitsHtml}${balancesHtml}${tokenUsageHtml}`}
     </div>`;
 }
 
@@ -312,9 +463,8 @@ async function refresh() {
       fetch('/api/status').then(r => r.json()),
     ]);
 
-    const grid = document.getElementById('grid');
-    grid.innerHTML = data.map(renderCard).join('');
-    grid.style.display = 'grid';
+    latestUsageData = data;
+    renderGrid(latestUsageData);
     document.getElementById('loading').style.display = 'none';
     document.getElementById('updated').textContent =
       status.last_updated ? `最后更新：${status.last_updated}` : '';
