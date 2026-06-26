@@ -19,7 +19,18 @@ from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.antigravity import AntigravityProvider
-from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest, MimoPushRequest
+from .api_schemas import (
+    UsageResponse,
+    LimitResponse,
+    UsageDetailResponse,
+    TokenUsageResponse,
+    HistoryModelUsageResponse,
+    HistoryUsagePeriodResponse,
+    ModelStatResponse,
+    AntigravityPushRequest,
+    CursorPushRequest,
+    MimoPushRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +82,13 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
     if hasattr(provider, "fetch_token_usage"):
         parsed.token_usage = await provider.fetch_token_usage()
 
+    # Fetch history usage if supported. History failures must not break current usage cards.
+    if hasattr(provider, "fetch_history_usage"):
+        try:
+            parsed.history_usage = await provider.fetch_history_usage()
+        except Exception as e:
+            logger.warning("Failed to fetch history usage for %s: %s", name, e)
+
     limits = []
     for lim in parsed.limits:
         details = [
@@ -95,6 +113,27 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
         for t in parsed.token_usage
     ]
 
+    history_usage = None
+    if parsed.history_usage:
+        history_usage = HistoryUsagePeriodResponse(
+            period=parsed.history_usage.period,
+            granularity=parsed.history_usage.granularity,
+            x_time=parsed.history_usage.x_time,
+            tokens_usage=parsed.history_usage.tokens_usage,
+            model_call_count=parsed.history_usage.model_call_count,
+            total_tokens=parsed.history_usage.total_tokens,
+            total_calls=parsed.history_usage.total_calls,
+            models=[
+                HistoryModelUsageResponse(
+                    model_name=m.model_name,
+                    total_tokens=m.total_tokens,
+                    total_calls=m.total_calls,
+                    tokens_usage=m.tokens_usage,
+                )
+                for m in parsed.history_usage.models
+            ],
+        )
+
     model_stats = [
         ModelStatResponse(model=m.model, total_tokens=m.total_tokens, requests=m.requests)
         for m in parsed.model_stats
@@ -107,6 +146,7 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
         limits=limits,
         balances=parsed.balances,
         token_usage=token_usage,
+        history_usage=history_usage,
         model_stats=model_stats,
     )
 
