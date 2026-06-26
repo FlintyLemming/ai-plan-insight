@@ -23,6 +23,24 @@ class TokenUsageResponse(BaseModel):
     total_calls: int
 
 
+class HistoryModelUsageResponse(BaseModel):
+    model_name: str
+    total_tokens: int
+    total_calls: int | None = None
+    tokens_usage: list[int]
+
+
+class HistoryUsagePeriodResponse(BaseModel):
+    period: str
+    granularity: str
+    x_time: list[str]
+    tokens_usage: list[int]
+    model_call_count: list[int]
+    total_tokens: int
+    total_calls: int
+    models: list[HistoryModelUsageResponse]
+
+
 class ModelStatResponse(BaseModel):
     model: str
     total_tokens: int
@@ -36,6 +54,7 @@ class UsageResponse(BaseModel):
     limits: list[LimitResponse] = []
     balances: dict[str, str] = {}
     token_usage: list[TokenUsageResponse] = []
+    history_usage: HistoryUsagePeriodResponse | None = None
     model_stats: list[ModelStatResponse] = []
     error: str | None = None
 

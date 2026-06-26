@@ -27,6 +27,26 @@ class TokenUsagePeriod(BaseModel):
     total_calls: int
 
 
+class HistoryModelUsage(BaseModel):
+    """Per-model token usage in a historical usage period."""
+    model_name: str
+    total_tokens: int
+    total_calls: int | None = None
+    tokens_usage: list[int]
+
+
+class HistoryUsagePeriod(BaseModel):
+    """Historical token and call usage for a fixed period."""
+    period: str
+    granularity: str
+    x_time: list[str]
+    tokens_usage: list[int]
+    model_call_count: list[int]
+    total_tokens: int
+    total_calls: int
+    models: list[HistoryModelUsage]
+
+
 class ModelStat(BaseModel):
     """Per-model usage statistics."""
     model: str
@@ -45,5 +65,7 @@ class UsageInfo(BaseModel):
     balances: dict[str, str] = {}  # e.g. {"total": "100.00", "gift": "10.50", "recharge": "89.50"}
     # Token usage by period (used by providers like BigModel)
     token_usage: list[TokenUsagePeriod] = []
+    # Historical token usage for chart rendering (used by providers like BigModel)
+    history_usage: HistoryUsagePeriod | None = None
     # Per-model stats (used by providers like Codex)
     model_stats: list[ModelStat] = []
