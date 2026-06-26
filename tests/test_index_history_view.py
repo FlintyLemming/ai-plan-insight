@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "ai_plan_insight" / "index.html"
@@ -36,3 +37,42 @@ def test_index_limits_history_button_to_glm_providers():
     assert "GLM Coding Plan" in html
     assert "白嫖 GLM Coding Plan 国际版" in html
     assert "GLM_HISTORY_PROVIDERS.has(data.provider)" in html
+
+
+def test_index_contains_hover_tooltip_and_vertical_cursor():
+    html = read_index()
+
+    assert "history-cursor" in html
+    assert "history-tooltip" in html
+    assert "function handleHistoryHover" in html
+    assert "function showHistoryTooltip" in html
+    assert "function hideHistoryTooltip" in html
+    assert "data-history-chart" in html
+    assert "addEventListener('mousemove'" in html
+    assert "addEventListener('mouseleave'" in html
+
+
+def test_index_tooltip_renders_date_and_per_model_tokens():
+    html = read_index()
+
+    assert "data-idx" in html or "dataset.idx" in html
+    assert "formatTokens" in html
+    assert "history-tooltip-row" in html or "history-tooltip-model" in html
+
+
+def test_index_hover_uses_screen_ctm_for_coordinate_conversion():
+    html = read_index()
+
+    assert "getScreenCTM" in html
+    assert "createSVGPoint" in html
+    assert "matrixTransform" in html
+
+
+def test_index_hover_passes_vertical_padding_to_cursor_dot_math():
+    html = read_index()
+
+    signature = re.search(r"function handleHistoryHover\(([^)]*)\)", html)
+    assert signature is not None
+    assert signature.group(1).replace(" ", "").endswith("width,height,padX,padY")
+
+    assert "handleHistoryHover(event, svg, tooltipEl, cursorEl, dotEls, points, normalizedModels, dates, width, height, padX, padY);" in html

@@ -63,10 +63,59 @@
     width: 100%;
     height: 180px;
     margin-bottom: 0.75rem;
+    position: relative;
+    touch-action: none;
   }
   .history-axis { stroke: #334155; stroke-width: 1; }
   .history-grid-line { stroke: #273449; stroke-width: 1; }
   .history-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .history-cursor {
+    stroke: #94a3b8;
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    pointer-events: none;
+  }
+  .history-cursor-dot {
+    r: 3;
+    pointer-events: none;
+  }
+  .history-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.78rem;
+    color: #e2e8f0;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    transform: translate(-50%, calc(-100% - 8px));
+    white-space: nowrap;
+    z-index: 10;
+    display: none;
+  }
+  .history-tooltip-date {
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+    color: #f1f5f9;
+  }
+  .history-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.85rem;
+    align-items: center;
+    padding: 0.12rem 0;
+  }
+  .history-tooltip-model {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #cbd5e1;
+  }
+  .history-tooltip-tokens {
+    font-variant-numeric: tabular-nums;
+    color: #e2e8f0;
+  }
   .history-model-row {
     display: flex;
     justify-content: space-between;
@@ -255,6 +304,129 @@ function buildPolyline(values, maxValue, width, height, padX, padY) {
   }).join(' ');
 }
 
+function buildHistoryPointCoords(values, maxValue, width, height, padX, padY) {
+  const plotWidth = width - padX * 2;
+  const plotHeight = height - padY * 2;
+  return values.map((value, idx) => {
+    const x = values.length === 1 ? width / 2 : padX + (idx * plotWidth / (values.length - 1));
+    const y = height - padY - ((value / maxValue) * plotHeight);
+    return { x, y, value, idx };
+  });
+}
+
+function formatHistoryDate(label) {
+  if (!label) return '';
+  const parts = String(label).split('-');
+  if (parts.length === 3) return `${parts[1]}月${parts[2]}日`;
+  return String(label);
+}
+
+function showHistoryTooltip(svg, tooltipEl, idx, points, normalizedModels, dates) {
+  if (idx < 0 || idx >= dates.length) return;
+  const point = points[idx];
+  const containerRect = tooltipEl.parentElement.getBoundingClientRect();
+  const screenPt = svgToScreen(svg, point.x, point.y);
+
+  const rows = normalizedModels
+    .map(m => ({ name: m.model_name, color: m.color, value: m.tokens_usage[idx] }))
+    .filter(row => row.value > 0);
+
+  if (!rows.length) {
+    tooltipEl.innerHTML = `<div class="history-tooltip-date">${formatHistoryDate(dates[idx])}</div><div class="history-tooltip-row"><span class="history-tooltip-tokens" style="color:#64748b">无用量</span></div>`;
+  } else {
+    tooltipEl.innerHTML = `<div class="history-tooltip-date">${formatHistoryDate(dates[idx])}</div>`
+      + rows.map(row => `
+        <div class="history-tooltip-row">
+          <span class="history-tooltip-model"><span class="history-dot" style="background:${row.color}"></span><span>${row.name}</span></span>
+          <span class="history-tooltip-tokens">${formatTokens(row.value)} tokens</span>
+        </div>`).join('');
+  }
+
+  tooltipEl.style.left = `${screenPt.x - containerRect.left}px`;
+  tooltipEl.style.top = `${screenPt.y - containerRect.top}px`;
+  tooltipEl.style.display = 'block';
+}
+
+function hideHistoryTooltip(tooltipEl, cursorEl, dotEls) {
+  tooltipEl.style.display = 'none';
+  if (cursorEl) cursorEl.style.display = 'none';
+  if (dotEls) dotEls.forEach(el => el.style.display = 'none');
+}
+
+function svgToScreen(svg, x, y) {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) {
+    const rect = svg.getBoundingClientRect();
+    const viewBox = svg.viewBox.baseVal;
+    return { x: rect.left + (x / viewBox.width) * rect.width, y: rect.top + (y / viewBox.height) * rect.height };
+  }
+  const pt = svg.createSVGPoint();
+  pt.x = x;
+  pt.y = y;
+  const screen = pt.matrixTransform(ctm);
+  return { x: screen.x, y: screen.y };
+}
+
+function screenToSvg(svg, clientX, clientY) {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) {
+    const rect = svg.getBoundingClientRect();
+    const viewBox = svg.viewBox.baseVal;
+    return { x: (clientX - rect.left) * viewBox.width / rect.width, y: (clientY - rect.top) * viewBox.height / rect.height };
+  }
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  const inv = pt.matrixTransform(ctm.inverse());
+  return { x: inv.x, y: inv.y };
+}
+
+function handleHistoryHover(event, svg, tooltipEl, cursorEl, dotEls, points, normalizedModels, dates, width, height, padX, padY) {
+  const svgPt = screenToSvg(svg, event.clientX, event.clientY);
+  const mouseX = svgPt.x;
+
+  if (mouseX < padX || mouseX > width - padX) {
+    hideHistoryTooltip(tooltipEl, cursorEl, dotEls);
+    return;
+  }
+
+  const plotWidth = width - padX * 2;
+  const n = points.length;
+  let nearestIdx = 0;
+  if (n === 1) {
+    nearestIdx = 0;
+  } else {
+    const ratio = (mouseX - padX) / plotWidth;
+    nearestIdx = Math.max(0, Math.min(n - 1, Math.round(ratio * (n - 1))));
+  }
+
+  const point = points[nearestIdx];
+
+  if (cursorEl) {
+    cursorEl.setAttribute('x1', point.x.toFixed(1));
+    cursorEl.setAttribute('x2', point.x.toFixed(1));
+    cursorEl.style.display = 'block';
+  }
+  if (dotEls) {
+    dotEls.forEach((el, i) => {
+      const model = normalizedModels[i];
+      if (!model) { el.style.display = 'none'; return; }
+      const v = model.tokens_usage[nearestIdx];
+      if (v > 0) {
+        const modelY = height - padY - ((v / Math.max(1, ...normalizedModels.flatMap(m => m.tokens_usage))) * (height - padY * 2));
+        el.setAttribute('cx', point.x.toFixed(1));
+        el.setAttribute('cy', modelY.toFixed(1));
+        el.setAttribute('fill', model.color);
+        el.style.display = 'block';
+      } else {
+        el.style.display = 'none';
+      }
+    });
+  }
+
+  showHistoryTooltip(svg, tooltipEl, nearestIdx, points, normalizedModels, dates);
+}
+
 function renderHistoryView(data) {
   const history = data.history_usage;
   const dates = history && Array.isArray(history.x_time) ? history.x_time : [];
@@ -275,9 +447,11 @@ function renderHistoryView(data) {
     tokens_usage: normalizeSeries(model.tokens_usage, dates.length),
   }));
   const maxValue = Math.max(1, ...normalizedModels.flatMap(m => m.tokens_usage));
+  const points = buildHistoryPointCoords(normalizedModels[0].tokens_usage, maxValue, width, height, padX, padY);
   const lines = normalizedModels.map(model => `
     <polyline class="history-line" stroke="${model.color}" points="${buildPolyline(model.tokens_usage, maxValue, width, height, padX, padY)}"></polyline>
   `).join('');
+  const dots = normalizedModels.map((model, i) => `<circle class="history-cursor-dot" data-idx="${i}" data-model="${model.model_name}" cx="0" cy="0" r="3" fill="${model.color}" style="display:none"></circle>`).join('');
   const modelRows = normalizedModels.map(model => {
     const calls = model.total_calls === null || model.total_calls === undefined
       ? ''
@@ -288,14 +462,20 @@ function renderHistoryView(data) {
     </div>`;
   }).join('');
 
+  const chartId = `history-chart-${data.provider.replace(/[^a-zA-Z0-9]/g, '')}`;
   return `
     <div class="history-summary">近 30 天：${formatTokens(history.total_tokens)} tokens · ${formatCount(history.total_calls)} 次调用</div>
-    <svg class="history-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="近 30 天模型 token 用量折线图">
-      <line class="history-grid-line" x1="${padX}" y1="${padY}" x2="${width - padX}" y2="${padY}"></line>
-      <line class="history-grid-line" x1="${padX}" y1="${height / 2}" x2="${width - padX}" y2="${height / 2}"></line>
-      <line class="history-axis" x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}"></line>
-      ${lines}
-    </svg>
+    <div class="history-chart" data-history-chart="${data.provider}" id="${chartId}">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="近 30 天模型 token 用量折线图" style="width:100%;height:100%;">
+        <line class="history-grid-line" x1="${padX}" y1="${padY}" x2="${width - padX}" y2="${padY}"></line>
+        <line class="history-grid-line" x1="${padX}" y1="${height / 2}" x2="${width - padX}" y2="${height / 2}"></line>
+        <line class="history-axis" x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}"></line>
+        ${lines}
+        <line class="history-cursor" data-history-cursor x1="0" y1="${padY}" x2="0" y2="${height - padY}" style="display:none"></line>
+        ${dots}
+      </svg>
+      <div class="history-tooltip" data-history-tooltip></div>
+    </div>
     <div>${modelRows}</div>`;
 }
 
@@ -315,6 +495,46 @@ function renderGrid(data) {
   const grid = document.getElementById('grid');
   grid.innerHTML = data.map(renderCard).join('');
   grid.style.display = 'grid';
+  bindHistoryCharts();
+}
+
+function bindHistoryCharts() {
+  const charts = document.querySelectorAll('[data-history-chart]');
+  charts.forEach(chartEl => {
+    const provider = chartEl.getAttribute('data-history-chart');
+    const data = latestUsageData.find(d => d.provider === provider);
+    if (!data || !data.history_usage) return;
+
+    const history = data.history_usage;
+    const dates = history.x_time || [];
+    const models = history.models || [];
+    const visibleModels = models.filter(m => Number(m.total_tokens || 0) > 0 || normalizeSeries(m.tokens_usage, dates.length).some(v => v > 0));
+    if (!dates.length || !visibleModels.length) return;
+
+    const width = 520;
+    const height = 180;
+    const padX = 24;
+    const padY = 18;
+    const normalizedModels = visibleModels.map((model, idx) => ({
+      ...model,
+      color: HISTORY_COLORS[idx % HISTORY_COLORS.length],
+      tokens_usage: normalizeSeries(model.tokens_usage, dates.length),
+    }));
+    const maxValue = Math.max(1, ...normalizedModels.flatMap(m => m.tokens_usage));
+    const points = buildHistoryPointCoords(normalizedModels[0].tokens_usage, maxValue, width, height, padX, padY);
+
+    const tooltipEl = chartEl.querySelector('[data-history-tooltip]');
+    const cursorEl = chartEl.querySelector('[data-history-cursor]');
+    const dotEls = Array.from(chartEl.querySelectorAll('.history-cursor-dot'));
+    const svg = chartEl.querySelector('svg');
+
+    chartEl.addEventListener('mousemove', (event) => {
+      handleHistoryHover(event, svg, tooltipEl, cursorEl, dotEls, points, normalizedModels, dates, width, height, padX, padY);
+    });
+    chartEl.addEventListener('mouseleave', () => {
+      hideHistoryTooltip(tooltipEl, cursorEl, dotEls);
+    });
+  });
 }
 
 function toggleCardView(provider) {
