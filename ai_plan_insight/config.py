@@ -12,14 +12,6 @@ class ProviderConfig(BaseModel):
     cookie: str = ""
 
 
-class PocketBaseConfig(BaseModel):
-    """Configuration for PocketBase connection."""
-    url: str = ""
-    email: str = ""
-    password: str = ""
-
-
 class Config(BaseModel):
     """Top-level configuration."""
     providers: dict[str, ProviderConfig]
-    pocketbase: PocketBaseConfig | None = None

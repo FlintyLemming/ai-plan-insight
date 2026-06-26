@@ -20,7 +20,6 @@ from .providers.codex import CodexProvider, CodexSecurityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.antigravity import AntigravityProvider
 from .api_schemas import UsageResponse, LimitResponse, UsageDetailResponse, TokenUsageResponse, ModelStatResponse, AntigravityPushRequest, CursorPushRequest, MimoPushRequest
-from .pocketbase_store import background_store_glm
 
 logger = logging.getLogger(__name__)
 
@@ -151,10 +150,8 @@ async def _background_refresh():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task_refresh = asyncio.create_task(_background_refresh())
-    task_pb = asyncio.create_task(background_store_glm())
     yield
     task_refresh.cancel()
-    task_pb.cancel()
 
 
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
