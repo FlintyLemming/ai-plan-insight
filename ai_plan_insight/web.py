@@ -325,3 +325,32 @@ async def push_mimo(req: MimoPushRequest):
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["mimo_token_plan"] = datetime.now().astimezone()
     return {"status": "ok"}
+
+
+@app.post("/api/push/claude")
+async def push_claude(req: ClaudePushRequest):
+    global _last_updated, _pushed_results, _pushed_at
+    _pushed_results["claude"] = UsageResponse(
+        provider="Claude 订阅",
+        limits=[
+            LimitResponse(
+                duration=7,
+                time_unit="天",
+                limit="100",
+                used=str(int(req.seven_day.utilization)),
+                remaining=str(int(100 - req.seven_day.utilization)),
+                reset_time=req.seven_day.resets_at,
+            ),
+            LimitResponse(
+                duration=5,
+                time_unit="小时",
+                limit="100",
+                used=str(int(req.five_hour.utilization)),
+                remaining=str(int(100 - req.five_hour.utilization)),
+                reset_time=req.five_hour.resets_at,
+            ),
+        ],
+    )
+    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["claude"] = datetime.now().astimezone()
+    return {"status": "ok"}
