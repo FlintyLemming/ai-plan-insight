@@ -24,6 +24,7 @@
 | Cursor | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [cursor-usage-agent](https://github.com/FlintyLemming/cursor-usage-agent) |
 | MiMo Token Plan | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [mimo-usage-agent](https://github.com/FlintyLemming/mimo-usage-agent) |
 | Antigravity | 🤖 需要本地 Agent | 使用 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager)，但原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
+| Claude 订阅 | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [claude-sub-agent](https://github.com/FlintyLemming/claude-sub-agent) |
 
 ## 部署
 
@@ -116,10 +117,11 @@ Web 模式下提供以下接口：
 - `POST /api/push/cursor` — 接收 Cursor 的用量推送
 - `POST /api/push/mimo` — 接收 MiMo 的用量推送
 - `POST /api/push/antigravity` — 接收 Antigravity 的用量推送
+- `POST /api/push/claude` — 接收 Claude 订阅的用量推送
 
 后台数据每 30 秒自动刷新。若某个 Provider 连续 3 次取数据失败，才会从页面消失。
 
-对于通过 Push API 推送数据的 Provider（Cursor、MiMo、Antigravity），数据保留 30 分钟。若 30 分钟内未收到新的推送，对应区块将从页面消失，直到再次推送。
+对于通过 Push API 推送数据的 Provider（Cursor、MiMo、Antigravity、Claude），数据保留 30 分钟。若 30 分钟内未收到新的推送，对应区块将从页面消失，直到再次推送。
 
 ### 用量推送 (Push API)
 
@@ -168,5 +170,24 @@ curl -X POST http://localhost:8000/api/push/antigravity \
     "gemini_3_flash_reset_time": "2026-04-15T00:00:00Z",
     "claude_series_percentage": 90.5,
     "claude_series_reset_time": "2026-04-15T00:00:00Z"
+  }'
+```
+
+#### 推送 Claude 订阅用量
+
+分别传入 `seven_day` 与 `five_hour` 的用量百分比 (`utilization`) 和重置时间 (`resets_at`，ISO8601 字符串)。
+
+```bash
+curl -X POST http://localhost:8000/api/push/claude \
+  -H "Content-Type: application/json" \
+  -d '{
+    "seven_day": {
+      "utilization": 45.2,
+      "resets_at": "2026-07-08T12:00:00Z"
+    },
+    "five_hour": {
+      "utilization": 12.8,
+      "resets_at": "2026-07-01T15:00:00Z"
+    }
   }'
 ```
