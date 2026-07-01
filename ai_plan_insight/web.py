@@ -30,6 +30,7 @@ from .api_schemas import (
     AntigravityPushRequest,
     CursorPushRequest,
     MimoPushRequest,
+    ClaudePushRequest,
 )
 
 logger = logging.getLogger(__name__)
