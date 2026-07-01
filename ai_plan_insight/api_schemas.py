@@ -83,3 +83,13 @@ class MimoPushRequest(BaseModel):
     membership_level: str | None = None
     limits: list[LimitResponse] = []
     balances: dict[str, str] = {}
+
+
+class ClaudeWindowPush(BaseModel):
+    utilization: float
+    resets_at: str
+
+
+class ClaudePushRequest(BaseModel):
+    seven_day: ClaudeWindowPush
+    five_hour: ClaudeWindowPush
