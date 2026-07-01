@@ -45,7 +45,17 @@ def test_usage_returns_two_claude_limits_after_push():
     limits = providers[0]["limits"]
     assert len(limits) == 2
 
-    seven = limits[0]
+    five = limits[0]
+    assert five["duration"] == 5
+    assert five["time_unit"] == "小时"
+    assert five["limit"] == "100"
+    # used = str(int(12.8)) = str(12) = "12"（截断，非四舍五入；设计文档叙述里的 "13" 是笔误）
+    assert five["used"] == "12"
+    assert five["remaining"] == "87"
+    assert five["reset_time"] == "2026-07-01T15:00:00Z"
+    assert five["limit_type"] == ""
+
+    seven = limits[1]
     assert seven["duration"] == 7
     assert seven["time_unit"] == "天"
     assert seven["limit"] == "100"
@@ -55,16 +65,6 @@ def test_usage_returns_two_claude_limits_after_push():
     assert seven["remaining"] == "54"
     assert seven["reset_time"] == "2026-07-08T12:00:00Z"
     assert seven["limit_type"] == ""
-
-    five = limits[1]
-    assert five["duration"] == 5
-    assert five["time_unit"] == "小时"
-    assert five["limit"] == "100"
-    # used = str(int(12.8)) = str(12) = "12"（截断，非四舍五入；设计文档叙述里的 "13" 是笔误）
-    assert five["used"] == "12"
-    assert five["remaining"] == "87"
-    assert five["reset_time"] == "2026-07-01T15:00:00Z"
-    assert five["limit_type"] == ""
 
 
 def test_expired_push_is_not_returned():
