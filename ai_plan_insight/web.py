@@ -207,6 +207,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "白嫖 GLM Coding Plan 国际版": 21,
         "Antigravity": 22,
         "小米 MiMo Token Plan": 23,
+        "Claude 订阅": 24,
         "Cursor": 25,
         "Kimi Coding Plan": 30,
         "华为云余额": 35,
