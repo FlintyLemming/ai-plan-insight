@@ -335,20 +335,20 @@ async def push_claude(req: ClaudePushRequest):
         provider="Claude 订阅",
         limits=[
             LimitResponse(
-                duration=7,
-                time_unit="天",
-                limit="100",
-                used=str(int(req.seven_day.utilization)),
-                remaining=str(int(100 - req.seven_day.utilization)),
-                reset_time=req.seven_day.resets_at,
-            ),
-            LimitResponse(
                 duration=5,
                 time_unit="小时",
                 limit="100",
                 used=str(int(req.five_hour.utilization)),
                 remaining=str(int(100 - req.five_hour.utilization)),
                 reset_time=req.five_hour.resets_at,
+            ),
+            LimitResponse(
+                duration=7,
+                time_unit="天",
+                limit="100",
+                used=str(int(req.seven_day.utilization)),
+                remaining=str(int(100 - req.seven_day.utilization)),
+                reset_time=req.seven_day.resets_at,
             ),
         ],
     )
