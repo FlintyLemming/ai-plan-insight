@@ -37,12 +37,20 @@
     align-items: baseline;
     margin-bottom: 1.25rem;
   }
-  .card-title { font-size: 1.15rem; font-weight: 600; }
+  .card-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .card-subtitle { font-size: 0.8rem; color: #94a3b8; }
   .card-header-right {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+    flex-shrink: 0;
   }
   .view-toggle {
     border: 1px solid #475569;
@@ -1027,7 +1035,10 @@ function renderHeader(data, subtitle) {
 function renderGrid(data) {
   const grid = document.getElementById('grid');
   grid.innerHTML = data.map(renderCard).join('');
-  grid.style.display = 'grid';
+  // Only reveal the balance grid when the balance tab is active;
+  // auto-refresh runs on a timer regardless of the active tab and would
+  // otherwise overwrite the usage view's visibility.
+  if (activeTab === 'balance') grid.style.display = 'grid';
   bindHistoryCharts();
 }
 
