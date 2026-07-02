@@ -94,3 +94,85 @@ def test_report_repost_overwrites_without_double_count(usage_db):
     import sqlite3
     rows = usage_store.query_timeseries(sqlite3.connect(usage_db), 7, {})
     assert len(rows) == 1 and rows[0].total == 150
+
+
+def _seed_two_sources(client):
+    """Two sources, one model, same day -> should SUM."""
+    client.post("/api/usage/report", json={
+        "source_id": "m1", "points": [
+            {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 1000, "output_tokens": 500},
+        ],
+    })
+    client.post("/api/usage/report", json={
+        "source_id": "m2", "points": [
+            {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 2000, "output_tokens": 1000},
+        ],
+    })
+
+
+def test_timeseries_default_range_is_90(usage_db, monkeypatch):
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    _seed_two_sources(TestClient(web.app))
+
+    resp = TestClient(web.app).get("/api/usage/timeseries")
+    body = resp.json()
+    assert body["range_days"] == 90
+    assert body["generated_at"]  # non-empty
+
+
+def test_timeseries_invalid_days_falls_back_to_90(usage_db, monkeypatch):
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    resp = TestClient(web.app).get("/api/usage/timeseries?days=5")
+    assert resp.json()["range_days"] == 90
+
+
+def test_timeseries_aggregates_across_sources_and_applies_alias(usage_db, monkeypatch):
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(
+        providers={},
+        model_aliases={"GLM 5.2": ["glm-5.2"]},
+    ))
+    _seed_two_sources(TestClient(web.app))
+
+    resp = TestClient(web.app).get("/api/usage/timeseries?days=7")
+    body = resp.json()
+    assert len(body["days"]) == 1
+    day = body["days"][0]
+    assert day["date"] == TODAY
+    assert len(day["models"]) == 1
+    m = day["models"][0]
+    assert m["label"] == "GLM 5.2"
+    assert m["raw_ids"] == ["glm-5.2"]
+    assert m["input_tokens"] == 3000
+    assert m["output_tokens"] == 1500
+    assert m["total"] == 4500
+    # summary
+    assert len(body["models"]) == 1
+    assert body["models"][0]["label"] == "GLM 5.2"
+    assert body["models"][0]["grand_total"] == 4500
+    assert body["models"][0]["share_pct"] == 100.0
+    assert body["models"][0]["color"]
+
+
+def test_timeseries_unknown_model_kept_as_own_label(usage_db, monkeypatch):
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={
+        "source_id": "m1", "points": [
+            {"date": TODAY, "model_id": "brand-new-model", "input_tokens": 10, "output_tokens": 5},
+        ],
+    })
+    body = client.get("/api/usage/timeseries?days=7").json()
+    labels = {m["label"] for m in body["models"]}
+    assert "brand-new-model" in labels  # unknown -> own label, renders fine
+
+
+def test_timeseries_empty_returns_empty_days(monkeypatch, usage_db):
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    body = TestClient(web.app).get("/api/usage/timeseries?days=7").json()
+    assert body["days"] == []
+    assert body["models"] == []

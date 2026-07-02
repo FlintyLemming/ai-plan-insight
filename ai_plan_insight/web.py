@@ -45,6 +45,13 @@ logger = logging.getLogger(__name__)
 REFRESH_INTERVAL = 30
 PUSH_TTL_SECONDS = 30 * 60  # 推送数据若 30 分钟内未继续推送则视为过期，整块不显示
 
+# Fixed palette for the usage chart, assigned in order of model rank (grand
+# total desc). Models beyond the palette limit are rolled into "其他" (Other).
+USAGE_PALETTE = ["#38bdf8", "#f59e0b", "#34d399", "#f472b6", "#a78bfa", "#fbbf24", "#22d3ee", "#fb7185"]
+USAGE_OTHER_COLOR = "#64748b"
+USAGE_OTHER_LABEL = "其他"
+USAGE_PALETTE_LIMIT = 8
+
 _cached_results: list[UsageResponse] = []
 _pushed_results: dict[str, UsageResponse] = {}
 _pushed_at: dict[str, datetime] = {}  # provider key -> 最近一次推送时间，用于 TTL 过滤
@@ -436,3 +443,98 @@ async def report_usage(req: UsageReportRequest):
         logger.error("usage report failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True, "upserted": n}
+
+
+def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesResponse:
+    """Turn alias-resolved store rows into the chart payload.
+
+    `rows` are `usage_store.TimeseriesRow` (already aliased + cross-source
+    summed). This layer assigns fixed colors by rank, rolls 9th+ models into
+    "其他", and computes per-model grand totals + share %.
+    """
+    grand: dict[str, int] = {}
+    for r in rows:
+        grand[r.label] = grand.get(r.label, 0) + r.total
+
+    ranked = sorted(grand.items(), key=lambda kv: kv[1], reverse=True)
+    top_labels = [label for label, _ in ranked[:USAGE_PALETTE_LIMIT]]
+    color_of = {label: USAGE_PALETTE[i] for i, label in enumerate(top_labels)}
+
+    def resolve(label: str) -> tuple[str, str]:
+        if label in color_of:
+            return label, color_of[label]
+        return USAGE_OTHER_LABEL, USAGE_OTHER_COLOR
+
+    # days[] — group by date, collapse top/其他 within each day
+    by_date: dict[str, list] = {}
+    for r in rows:
+        by_date.setdefault(r.date, []).append(r)
+
+    days_out: list[dict] = []
+    for d in sorted(by_date.keys()):
+        agg: dict[str, dict] = {}
+        for r in by_date[d]:
+            resolved_label, _ = resolve(r.label)
+            slot = agg.setdefault(resolved_label, {
+                "input_tokens": 0, "output_tokens": 0, "total": 0, "raw_ids": set(),
+            })
+            slot["input_tokens"] += r.input_tokens
+            slot["output_tokens"] += r.output_tokens
+            slot["total"] += r.total
+            slot["raw_ids"].update(r.raw_ids)
+        days_out.append({
+            "date": d,
+            "models": [
+                {
+                    "label": rl,
+                    "raw_ids": sorted(s["raw_ids"]),
+                    "input_tokens": s["input_tokens"],
+                    "output_tokens": s["output_tokens"],
+                    "total": s["total"],
+                }
+                for rl, s in agg.items()
+            ],
+        })
+
+    # models[] — grand totals + share %, merged for 其他
+    grand_total_all = sum(grand.values()) or 1
+    summary: dict[str, dict] = {}
+    for label, total in ranked:
+        resolved_label, color = resolve(label)
+        slot = summary.setdefault(resolved_label, {"grand_total": 0, "color": color})
+        slot["grand_total"] += total
+    models_out = [
+        {
+            "label": rl,
+            "color": s["color"],
+            "grand_total": s["grand_total"],
+            "share_pct": round(s["grand_total"] * 100 / grand_total_all, 1),
+        }
+        for rl, s in summary.items()
+    ]
+    models_out.sort(key=lambda m: m["grand_total"], reverse=True)
+
+    return UsageTimeseriesResponse(
+        range_days=range_days,
+        generated_at=datetime.now().astimezone().isoformat(),
+        days=days_out,
+        models=models_out,
+    )
+
+
+@app.get("/api/usage/timeseries", response_model=UsageTimeseriesResponse)
+async def usage_timeseries(days: int = 90):
+    days = days if days in (7, 30, 90) else 90
+    config = load_config(_config_path)
+    try:
+        with closing(_usage_conn()) as conn:
+            rows = usage_store.query_timeseries(conn, days, config.alias_lookup)
+    except Exception as e:
+        logger.error("usage timeseries failed: %s", e)
+        return UsageTimeseriesResponse(
+            range_days=days,
+            generated_at=datetime.now().astimezone().isoformat(),
+            days=[],
+            models=[],
+        )
+    return build_timeseries_response(rows, days)
