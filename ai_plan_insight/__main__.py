@@ -14,6 +14,11 @@ def _parse_args() -> argparse.Namespace:
         help="Path to configuration file (default: ~/.ai_plan_insight.json)",
     )
     parser.add_argument(
+        "--usage-db",
+        default=None,
+        help="Path to the usage SQLite DB (default: <config dir>/usage.db, or ./data/usage.db)",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Run as a web server",
@@ -123,6 +128,9 @@ def main() -> None:
         import ai_plan_insight.web as web_mod
 
         web_mod._config_path = args.config
+        if args.usage_db:
+            from pathlib import Path
+            web_mod._usage_db_path = Path(args.usage_db)
 
         logging.basicConfig(
             level=logging.DEBUG,
