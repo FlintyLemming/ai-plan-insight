@@ -27,3 +27,18 @@ def test_alias_lookup_duplicate_raw_id_last_definition_wins():
         model_aliases={"A": ["x"], "B": ["x"]},
     )
     assert cfg.alias_lookup["x"] == "B"
+
+
+def test_load_config_passes_model_aliases_through(tmp_path):
+    from ai_plan_insight.config_loader import load_config
+
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        '{"providers": {}, "model_aliases": {"GLM 5.2": ["glm-5.2"]}}',
+        encoding="utf-8",
+    )
+
+    cfg = load_config(str(config_file))
+
+    assert cfg.model_aliases == {"GLM 5.2": ["glm-5.2"]}
+    assert cfg.alias_lookup["glm-5.2"] == "GLM 5.2"
