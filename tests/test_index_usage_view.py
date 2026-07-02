@@ -45,3 +45,9 @@ def test_chart_renderer_and_palette_present():
 def test_chart_empty_state_message_present():
     h = read_index()
     assert "暂无用量数据" in h
+
+
+def test_usage_fetch_and_refresh_wired():
+    h = read_index()
+    assert "function refreshUsageChart" in h
+    assert "/api/usage/timeseries" in h

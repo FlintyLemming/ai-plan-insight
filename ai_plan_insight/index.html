@@ -470,6 +470,17 @@ function renderUsageChart(data) {
   });
 }
 
+async function refreshUsageChart() {
+  const container = document.getElementById('usage-chart-container');
+  try {
+    const resp = await fetch(`/api/usage/timeseries?days=${usageRange}`);
+    const data = await resp.json();
+    renderUsageChart(data);
+  } catch (e) {
+    if (container) container.innerHTML = `<div class="empty-usage">加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+
 function formatTimeWindow(l) {
   const key = l.time_unit.toLowerCase();
   if (key === 'tokens_limit') return '模型调用';
@@ -946,6 +957,7 @@ async function refresh() {
 
 refresh();
 setInterval(refresh, 60000);
+setInterval(() => { if (activeTab === 'usage') refreshUsageChart(); }, 60000);
 </script>
 </body>
 </html>
