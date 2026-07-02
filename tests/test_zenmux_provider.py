@@ -94,19 +94,19 @@ def test_parse_usage_builds_percentage_limits_and_balances():
     assert info.limits[0].reset_time.tzinfo is not None
     assert info.limits[1].used == "6.73"
 
-    # Monthly quota lives in balances, not limits
-    assert "月配额" in info.balances
-    assert "34,560 flows / $1,134.33" in info.balances["月配额"]
+    # Monthly quota is no longer surfaced in balances
+    assert "月配额" not in info.balances
 
-    # PAYG balances
-    assert info.balances["PAYG 总余额"] == "$482.74"
-    assert info.balances["PAYG 充值余额"] == "$35.00"
-    assert info.balances["PAYG 赠送余额"] == "$447.74"
+    # PAYG balance (total only)
+    assert info.balances["PAYG 余额"] == "$482.74"
+    assert "PAYG 总余额" not in info.balances
+    assert "PAYG 充值余额" not in info.balances
+    assert "PAYG 赠送余额" not in info.balances
 
     # Plan info
     assert info.balances["套餐"] == "Ultra"
     assert info.balances["套餐到期"] == "2026-04-12"
-    assert info.balances["Flow 汇率"] == "$0.03283/flow"
+    assert "Flow 汇率" not in info.balances
 
     # Healthy status is not surfaced as a balance row
     assert "账号状态" not in info.balances
@@ -126,7 +126,7 @@ def test_parse_usage_tolerates_missing_balance_block():
     # Subscription-derived fields still present
     assert info.membership_level == "Ultra"
     assert info.balances["套餐"] == "Ultra"
-    assert "PAYG 总余额" not in info.balances
+    assert "PAYG 余额" not in info.balances
 
 
 def test_reset_time_parsed_as_utc():

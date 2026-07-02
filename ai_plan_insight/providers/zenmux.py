@@ -89,29 +89,13 @@ class ZenMuxProvider(BaseProvider):
         if expires_at:
             balances["套餐到期"] = self._format_date(expires_at)
 
-        monthly = sub.get("quota_monthly") or {}
-        max_flows = monthly.get("max_flows")
-        max_value = monthly.get("max_value_usd")
-        if max_flows is not None and max_value is not None:
-            balances["月配额"] = f"{float(max_flows):,.0f} flows / ${float(max_value):,.2f}"
-
-        rate = sub.get("effective_usd_per_flow")
-        if rate is not None:
-            balances["Flow 汇率"] = f"${float(rate):.5f}/flow"
-
         status = sub.get("account_status")
         if status and status != "healthy":
             balances["账号状态"] = str(status)
 
         total = bal.get("total_credits")
-        top_up = bal.get("top_up_credits")
-        bonus = bal.get("bonus_credits")
         if total is not None:
-            balances["PAYG 总余额"] = f"${float(total):.2f}"
-        if top_up is not None:
-            balances["PAYG 充值余额"] = f"${float(top_up):.2f}"
-        if bonus is not None:
-            balances["PAYG 赠送余额"] = f"${float(bonus):.2f}"
+            balances["PAYG 余额"] = f"${float(total):.2f}"
 
         return balances
 
