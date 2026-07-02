@@ -204,13 +204,38 @@
     color: #fca5a5;
   }
   #loading { color: #64748b; }
+  .tab-bar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .tab {
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: #94a3b8;
+    border-radius: 8px;
+    padding: 0.4rem 1rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .tab.active {
+    border-color: #38bdf8;
+    color: #e0f2fe;
+    background: #0f172a;
+  }
+  .tab:hover { border-color: #475569; color: #cbd5e1; }
 </style>
 </head>
 <body>
   <h1>AI Plan Insight</h1>
+  <div class="tab-bar">
+    <button class="tab active" data-tab="balance">订阅余额</button>
+    <button class="tab" data-tab="usage">模型用量</button>
+  </div>
   <div class="updated" id="updated">加载中...</div>
   <div id="loading">正在获取数据...</div>
   <div class="grid" id="grid" style="display:none;"></div>
+  <div id="usage-chart-view" style="display:none;"></div>
 
 <script>
 const TIME_UNIT_LABELS = {
@@ -218,6 +243,29 @@ const TIME_UNIT_LABELS = {
   day: '天', week: '周', month: '月', year: '年',
   tokens_limit: '模型调用',
 };
+
+const TAB_KEY = 'ai-plan-insight:tab';
+let activeTab = localStorage.getItem(TAB_KEY) || 'balance';
+
+function applyTab(tab) {
+  activeTab = tab;
+  localStorage.setItem(TAB_KEY, tab);
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+  });
+  const showBalance = tab === 'balance';
+  document.getElementById('grid').style.display = showBalance ? '' : 'none';
+  document.getElementById('usage-chart-view').style.display = showBalance ? 'none' : 'block';
+  if (!showBalance) {
+    refreshUsageChart();
+  }
+}
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => applyTab(btn.getAttribute('data-tab')));
+});
+
+applyTab(activeTab);
 
 function formatTimeWindow(l) {
   const key = l.time_unit.toLowerCase();
