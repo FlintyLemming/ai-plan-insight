@@ -21,6 +21,7 @@
 | Kimi Coding Plan | ✅ 直接获取 | 配置 `api_key` | — |
 | 华为云余额 | ✅ 直接获取 | 配置 `access_key_id` + `access_key_secret` | — |
 | AIPing | ✅ 直接获取 | 配置 `api_key` | — |
+| ZenMux | ✅ 直接获取 | 配置 `api_key`（Management API Key），同时获取订阅配额与 PAYG 余额 | — |
 | Cursor | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [cursor-usage-agent](https://github.com/FlintyLemming/cursor-usage-agent) |
 | MiMo Token Plan | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [mimo-usage-agent](https://github.com/FlintyLemming/mimo-usage-agent) |
 | Antigravity | 🤖 需要本地 Agent | 使用 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager)，但原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
@@ -90,6 +91,9 @@ docker compose up -d
     },
     "aiping": {
       "api_key": "YOUR_AIPING_API_KEY"
+    },
+    "zenmux": {
+      "api_key": "YOUR_ZENMUX_MANAGEMENT_API_KEY"
     }
   }
 }

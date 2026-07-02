@@ -16,6 +16,7 @@ from .providers.bigmodel import BigModelProvider
 from .providers.bigmodel_international import BigModelInternationalProvider
 from .providers.aiping import AipingProvider
 from .providers.huawei_cloud import HuaweiCloudBssProvider
+from .providers.zenmux import ZenMuxProvider
 from .providers.codex import CodexProvider, CodexSecurityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.antigravity import AntigravityProvider
@@ -61,6 +62,8 @@ def _build_provider(name: str, config: ProviderConfig):
             return AipingProvider(config)
         case "huawei_cloud":
             return HuaweiCloudBssProvider(config)
+        case "zenmux":
+            return ZenMuxProvider(config)
         case "codex":
             return CodexProvider(config)
         case "codex_security":
@@ -203,6 +206,7 @@ def _provider_sort_key(resp: UsageResponse) -> int:
         "自购 Codex 中转站": 10,
         "白嫖 Codex Security 中转": 11,
         "Claude 订阅": 12,
+        "ZenMux": 13,
         "GLM Coding Plan": 20,
         "白嫖 GLM Coding Plan 国际版": 21,
         "火山方舟 Coding Plan": 22,

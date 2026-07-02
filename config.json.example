@@ -17,6 +17,9 @@
     "aiping": {
       "api_key": "YOUR_AIPING_API_KEY"
     },
+    "zenmux": {
+      "api_key": "YOUR_ZENMUX_MANAGEMENT_API_KEY"
+    },
     "antigravity": {
       "api_key": "YOUR_ANTIGRAVITY_API_KEY",
       "base_url": "http://your-antigravity-manager:8045",
