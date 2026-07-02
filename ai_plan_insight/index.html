@@ -245,11 +245,45 @@
     color: #0f172a;
     font-weight: 600;
   }
-  #usage-chart-container { position: relative; width: 100%; max-width: 1140px; }
+  #usage-chart-view {
+    width: 100%;
+    max-width: 1140px;
+  }
+  #usage-chart-container { position: relative; width: 100%; }
   .usage-axis { stroke: #334155; stroke-width: 1; }
   .usage-grid { stroke: #273449; stroke-width: 1; }
   .usage-axis-text { fill: #64748b; font-size: 11px; }
-  .usage-legend-text { fill: #cbd5e1; font-size: 12px; }
+  .usage-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 1rem;
+    align-items: center;
+    margin-top: 0.75rem;
+    color: #cbd5e1;
+    font-size: 0.82rem;
+  }
+  .usage-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .usage-legend-swatch {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 2px;
+    flex: 0 0 auto;
+  }
+  .usage-legend-label {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .usage-legend-share {
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+  }
   .usage-hover { cursor: pointer; }
   .empty-usage {
     color: #64748b;
@@ -287,6 +321,115 @@
     color: #cbd5e1;
   }
   .usage-tooltip-tokens { font-variant-numeric: tabular-nums; color: #e2e8f0; }
+  #usage-table-container { margin-top: 1.5rem; }
+  .usage-table-wrap {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .usage-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+  }
+  .usage-table th, .usage-table td {
+    padding: 0.6rem 0.9rem;
+    text-align: right;
+    border-bottom: 1px solid #334155;
+  }
+  .usage-table th {
+    color: #94a3b8;
+    font-weight: 600;
+    background: #0f172a;
+    text-align: right;
+  }
+  .usage-table th.col-model, .usage-table td.col-model {
+    text-align: left;
+  }
+  .usage-table tbody tr:last-child td { border-bottom: none; }
+  .usage-table tbody tr:hover { background: #243349; }
+  .usage-table td.num, .usage-table th.num { font-variant-numeric: tabular-nums; }
+  .usage-table-model-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    max-width: 18rem;
+  }
+  .usage-table-swatch {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 2px;
+    flex: 0 0 auto;
+  }
+  .usage-table-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #e2e8f0;
+  }
+  .usage-table-empty {
+    color: #64748b;
+    font-size: 0.95rem;
+    padding: 2.5rem 0;
+    text-align: center;
+  }
+  .usage-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+    color: #94a3b8;
+    font-size: 0.8rem;
+  }
+  .usage-pagination-info { font-variant-numeric: tabular-nums; }
+  .usage-pagination-pages {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+  .usage-page-btn {
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #cbd5e1;
+    border-radius: 6px;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    min-width: 1.8rem;
+  }
+  .usage-page-btn:hover:not(:disabled) { border-color: #38bdf8; color: #e0f2fe; }
+  .usage-page-btn.active {
+    border-color: #38bdf8;
+    background: #38bdf8;
+    color: #0f172a;
+    font-weight: 600;
+  }
+  .usage-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .usage-page-ellipsis {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    padding: 0 0.2rem;
+  }
+  .usage-page-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .usage-page-size-select {
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #cbd5e1;
+    border-radius: 6px;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .usage-page-size-select:focus { outline: none; border-color: #38bdf8; }
 </style>
 </head>
 <body>
@@ -305,6 +448,7 @@
       <button class="range-pill" data-range="7">7天</button>
     </div>
     <div id="usage-chart-container"></div>
+    <div id="usage-table-container"></div>
   </div>
 
 <script>
@@ -340,6 +484,13 @@ applyTab(activeTab);
 const RANGE_KEY = 'ai-plan-insight:usage-range';
 let usageRange = Number(localStorage.getItem(RANGE_KEY)) || 90;
 
+const TABLE_PAGE_SIZE_KEY = 'ai-plan-insight:usage-table-page-size';
+const TABLE_PAGE_SIZES = [10, 20, 50, 100];
+let tablePageSize = Number(localStorage.getItem(TABLE_PAGE_SIZE_KEY)) || 10;
+if (!TABLE_PAGE_SIZES.includes(tablePageSize)) tablePageSize = 10;
+let tableCurrentPage = 1;
+let tableAllModels = [];
+
 function applyUsageRange(range) {
   usageRange = range;
   localStorage.setItem(RANGE_KEY, String(range));
@@ -373,8 +524,12 @@ function formatUsageDate(label) {
 
 function renderUsageChart(data) {
   const container = document.getElementById('usage-chart-container');
+  const tableContainer = document.getElementById('usage-table-container');
+  tableAllModels = (data && Array.isArray(data.all_models)) ? data.all_models : [];
+  tableCurrentPage = 1;
   if (!data || !data.days || data.days.length === 0) {
     container.innerHTML = '<div class="empty-usage">暂无用量数据</div>';
+    if (tableContainer) tableContainer.innerHTML = '';
     return;
   }
 
@@ -415,12 +570,16 @@ function renderUsageChart(data) {
     const x = cx - barW / 2;
     let cursor = baseY;
     const present = modelSummary
-      .map(m => day.models.find(dm => dm.label === m.label))
+      .map(m => {
+        const dayModel = day.models.find(dm => dm.label === m.label);
+        return dayModel ? { ...dayModel, color: m.color } : null;
+      })
       .filter(Boolean);
     present.forEach(m => {
       const h = (m.total / maxTotal) * plotH;
       const y = cursor - h;
-      barsSvg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${m.color}"/>`;
+      const segmentColor = m.color || colorByLabel[m.label] || USAGE_OTHER_COLOR;
+      barsSvg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${segmentColor}"/>`;
       cursor = y;
     });
     barsSvg += `<rect class="usage-hover" data-idx="${idx}" x="${(padL + slot * idx).toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent"/>`;
@@ -429,12 +588,14 @@ function renderUsageChart(data) {
     }
   });
 
-  // Legend, top-right inside the chart
-  let legendSvg = '';
+  // Legend below the chart, kept outside the SVG so it never covers bars.
+  let legendHtml = '';
   modelSummary.forEach((m, i) => {
-    const ly = padT + 4 + i * 18;
-    legendSvg += `<rect x="${W - padR - 168}" y="${ly}" width="10" height="10" fill="${m.color}"/>`;
-    legendSvg += `<text class="usage-legend-text" x="${W - padR - 152}" y="${ly + 9}">${escapeHtml(m.label)} ${m.share_pct.toFixed(1)}%</text>`;
+    legendHtml += `<div class="usage-legend-item">
+      <span class="usage-legend-swatch" style="background:${m.color}"></span>
+      <span class="usage-legend-label">${escapeHtml(m.label)}</span>
+      <span class="usage-legend-share">${Number(m.share_pct || 0).toFixed(1)}%</span>
+    </div>`;
   });
 
   container.innerHTML = `
@@ -442,8 +603,8 @@ function renderUsageChart(data) {
   <line class="usage-axis" x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}"/>
   ${gridSvg}
   ${barsSvg}
-  ${legendSvg}
 </svg>
+<div class="usage-legend">${legendHtml}</div>
 <div class="usage-tooltip" id="usage-tooltip"></div>`;
 
   // Tooltip wiring: position the overlay div at the mouse, render per-model rows.
@@ -468,6 +629,116 @@ function renderUsageChart(data) {
     });
     rect.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
   });
+
+  renderUsageTable();
+}
+
+function buildPageNumbers(current, total) {
+  // Produce a compact list of page numbers with `null` gaps for ellipses.
+  const pages = [];
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) pages.push(i);
+    return pages;
+  }
+  pages.push(1);
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) pages.push(null);
+  for (let i = left; i <= right; i++) pages.push(i);
+  if (right < total - 1) pages.push(null);
+  pages.push(total);
+  return pages;
+}
+
+function renderUsageTable() {
+  const container = document.getElementById('usage-table-container');
+  if (!container) return;
+  if (!tableAllModels || tableAllModels.length === 0) {
+    container.innerHTML = '<div class="usage-table-empty">暂无用量数据</div>';
+    return;
+  }
+
+  const all = tableAllModels.slice().sort((a, b) => (b.grand_total || 0) - (a.grand_total || 0));
+  const total = all.length;
+  const size = tablePageSize;
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  if (tableCurrentPage > totalPages) tableCurrentPage = totalPages;
+  if (tableCurrentPage < 1) tableCurrentPage = 1;
+
+  const startIdx = (tableCurrentPage - 1) * size;
+  const endIdx = Math.min(startIdx + size, total);
+  const pageRows = all.slice(startIdx, endIdx);
+
+  const rowsHtml = pageRows.map(m => {
+    const color = m.color || USAGE_OTHER_COLOR;
+    return `<tr>
+      <td class="col-model"><span class="usage-table-model-cell">
+        <span class="usage-table-swatch" style="background:${color}"></span>
+        <span class="usage-table-label">${escapeHtml(m.label)}</span>
+      </span></td>
+      <td class="num">${formatTokens(m.input_tokens || 0)}</td>
+      <td class="num">${formatTokens(m.output_tokens || 0)}</td>
+    </tr>`;
+  }).join('');
+
+  const pages = buildPageNumbers(tableCurrentPage, totalPages);
+  let pageBtnsHtml = '';
+  pageBtnsHtml += `<button class="usage-page-btn" data-page="prev" ${tableCurrentPage <= 1 ? 'disabled' : ''}>上一页</button>`;
+  pages.forEach(p => {
+    if (p === null) {
+      pageBtnsHtml += `<span class="usage-page-ellipsis">...</span>`;
+    } else {
+      pageBtnsHtml += `<button class="usage-page-btn ${p === tableCurrentPage ? 'active' : ''}" data-page="${p}">${p}</button>`;
+    }
+  });
+  pageBtnsHtml += `<button class="usage-page-btn" data-page="next" ${tableCurrentPage >= totalPages ? 'disabled' : ''}>下一页</button>`;
+
+  const sizeOptions = TABLE_PAGE_SIZES.map(s =>
+    `<option value="${s}" ${s === size ? 'selected' : ''}>${s} / 页</option>`
+  ).join('');
+
+  container.innerHTML = `
+<div class="usage-table-wrap">
+  <table class="usage-table">
+    <thead>
+      <tr>
+        <th class="col-model">模型名</th>
+        <th class="num">输入 token</th>
+        <th class="num">输出 token</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+</div>
+<div class="usage-pagination">
+  <span class="usage-pagination-info">第 ${startIdx + 1}-${endIdx} 条，共 ${total} 个模型</span>
+  <span class="usage-pagination-pages">${pageBtnsHtml}</span>
+  <span class="usage-page-size">
+    <select class="usage-page-size-select" id="usage-page-size-select">${sizeOptions}</select>
+  </span>
+</div>`;
+
+  container.querySelectorAll('.usage-page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const target = btn.getAttribute('data-page');
+      if (target === 'prev') tableCurrentPage = Math.max(1, tableCurrentPage - 1);
+      else if (target === 'next') tableCurrentPage = Math.min(totalPages, tableCurrentPage + 1);
+      else tableCurrentPage = Number(target);
+      renderUsageTable();
+    });
+  });
+  const sizeSelect = document.getElementById('usage-page-size-select');
+  if (sizeSelect) {
+    sizeSelect.addEventListener('change', () => {
+      const v = Number(sizeSelect.value);
+      if (!TABLE_PAGE_SIZES.includes(v)) return;
+      tablePageSize = v;
+      localStorage.setItem(TABLE_PAGE_SIZE_KEY, String(v));
+      tableCurrentPage = 1;
+      renderUsageTable();
+    });
+  }
 }
 
 async function refreshUsageChart() {

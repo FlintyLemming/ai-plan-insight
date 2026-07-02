@@ -453,8 +453,12 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
     "其他", and computes per-model grand totals + share %.
     """
     grand: dict[str, int] = {}
+    grand_in: dict[str, int] = {}
+    grand_out: dict[str, int] = {}
     for r in rows:
         grand[r.label] = grand.get(r.label, 0) + r.total
+        grand_in[r.label] = grand_in.get(r.label, 0) + r.input_tokens
+        grand_out[r.label] = grand_out.get(r.label, 0) + r.output_tokens
 
     ranked = sorted(grand.items(), key=lambda kv: kv[1], reverse=True)
     top_labels = [label for label, _ in ranked[:USAGE_PALETTE_LIMIT]]
@@ -501,12 +505,19 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
     summary: dict[str, dict] = {}
     for label, total in ranked:
         resolved_label, color = resolve(label)
-        slot = summary.setdefault(resolved_label, {"grand_total": 0, "color": color})
+        slot = summary.setdefault(resolved_label, {
+            "grand_total": 0, "color": color,
+            "input_tokens": 0, "output_tokens": 0,
+        })
         slot["grand_total"] += total
+        slot["input_tokens"] += grand_in.get(label, 0)
+        slot["output_tokens"] += grand_out.get(label, 0)
     models_out = [
         {
             "label": rl,
             "color": s["color"],
+            "input_tokens": s["input_tokens"],
+            "output_tokens": s["output_tokens"],
             "grand_total": s["grand_total"],
             "share_pct": round(s["grand_total"] * 100 / grand_total_all, 1),
         }
@@ -514,11 +525,26 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
     ]
     models_out.sort(key=lambda m: m["grand_total"], reverse=True)
 
+    # all_models[] — every model un-merged (no top-8 + 其他 rollup),
+    # so the per-model table can show the full list with pagination.
+    all_models_out = [
+        {
+            "label": label,
+            "color": color_of.get(label, USAGE_OTHER_COLOR),
+            "input_tokens": grand_in.get(label, 0),
+            "output_tokens": grand_out.get(label, 0),
+            "grand_total": total,
+            "share_pct": round(total * 100 / grand_total_all, 1),
+        }
+        for label, total in ranked
+    ]
+
     return UsageTimeseriesResponse(
         range_days=range_days,
         generated_at=datetime.now().astimezone().isoformat(),
         days=days_out,
         models=models_out,
+        all_models=all_models_out,
     )
 
 
@@ -536,5 +562,6 @@ async def usage_timeseries(days: int = 90):
             generated_at=datetime.now().astimezone().isoformat(),
             days=[],
             models=[],
+            all_models=[],
         )
     return build_timeseries_response(rows, days)

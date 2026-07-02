@@ -134,6 +134,8 @@ class UsageDay(BaseModel):
 class UsageModelSummary(BaseModel):
     label: str
     color: str
+    input_tokens: int = 0
+    output_tokens: int = 0
     grand_total: int
     share_pct: float
 
@@ -143,3 +145,4 @@ class UsageTimeseriesResponse(BaseModel):
     generated_at: str
     days: list[UsageDay]
     models: list[UsageModelSummary]
+    all_models: list[UsageModelSummary] = []

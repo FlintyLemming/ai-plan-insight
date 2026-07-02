@@ -176,3 +176,48 @@ def test_timeseries_empty_returns_empty_days(monkeypatch, usage_db):
     body = TestClient(web.app).get("/api/usage/timeseries?days=7").json()
     assert body["days"] == []
     assert body["models"] == []
+
+
+def test_timeseries_all_models_carries_input_output_and_is_not_collapsed(usage_db, monkeypatch):
+    """`all_models` keeps every model separate (no top-8 + 其他 rollup)
+    and reports input/output token totals for each."""
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    client = TestClient(web.app)
+    for i in range(10):
+        client.post("/api/usage/report", json={
+            "source_id": "m1",
+            "points": [{"date": TODAY, "model_id": f"model-{i}",
+                        "input_tokens": 100 * (i + 1), "output_tokens": 50 * (i + 1)}],
+        })
+
+    body = client.get("/api/usage/timeseries?days=7").json()
+    assert "all_models" in body
+    all_models = body["all_models"]
+    assert len(all_models) == 10  # none collapsed into 其他
+    labels = {m["label"] for m in all_models}
+    assert "其他" not in labels
+    # input/output reported per model
+    by_label = {m["label"]: m for m in all_models}
+    m0 = by_label["model-0"]
+    assert m0["input_tokens"] == 100
+    assert m0["output_tokens"] == 50
+    assert m0["grand_total"] == 150
+    assert m0["share_pct"] >= 0
+    # chart `models` still collapses (<= 8 + 其他), so it's smaller than all_models
+    assert len(body["models"]) <= 9
+    assert len(body["models"]) < len(all_models)
+
+
+def test_timeseries_models_summary_includes_input_output(usage_db, monkeypatch):
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={
+        "source_id": "m1",
+        "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 300, "output_tokens": 120}],
+    })
+    body = client.get("/api/usage/timeseries?days=7").json()
+    m = body["models"][0]
+    assert m["input_tokens"] == 300
+    assert m["output_tokens"] == 120
