@@ -1,16 +1,22 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+import sqlite3
+from contextlib import asynccontextmanager, closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
 from .config import ProviderConfig
 from .config_loader import load_config, DEFAULT_CONFIG_PATH
+from . import usage_store
+from .api_schemas import (
+    UsageReportRequest,
+    UsageTimeseriesResponse,
+)
 from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
 from .providers.bigmodel_international import BigModelInternationalProvider
@@ -46,6 +52,31 @@ _last_updated: str | None = None
 _consecutive_failures: dict[str, int] = {}  # provider name -> consecutive fail count
 _prev_results: dict[str, UsageResponse] = {}  # last successful result per provider
 _config_path: str | None = None  # set by main() when --config is provided
+_usage_db_path: Path | None = None  # set by main() (--usage-db) or resolved at startup
+
+
+def resolve_usage_db_path() -> Path:
+    """Resolve the usage DB path per spec §4 precedence:
+
+    1. explicit `--usage-db` flag (already set on `_usage_db_path`), else
+    2. same directory as `--config`, else
+    3. repo-root `/data/usage.db`.
+    """
+    global _usage_db_path
+    if _usage_db_path is not None:
+        return _usage_db_path
+    if _config_path:
+        _usage_db_path = Path(_config_path).resolve().parent / "usage.db"
+    else:
+        _usage_db_path = Path(__file__).resolve().parent.parent / "data" / "usage.db"
+    _usage_db_path.parent.mkdir(parents=True, exist_ok=True)
+    return _usage_db_path
+
+
+def _usage_conn() -> sqlite3.Connection:
+    if _usage_db_path is None:
+        raise RuntimeError("usage DB path not initialized")
+    return sqlite3.connect(_usage_db_path)
 
 # Providers that have no fetch implementation and are fed exclusively via the
 # /api/push/* endpoints. They are allowed as keys in config.json (to carry an
@@ -216,6 +247,10 @@ async def _background_refresh():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        usage_store.init_db(resolve_usage_db_path())
+    except Exception as e:
+        logger.error("usage DB init failed: %s", e)
     task_refresh = asyncio.create_task(_background_refresh())
     yield
     task_refresh.cancel()
@@ -382,3 +417,22 @@ async def push_claude(req: ClaudePushRequest):
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["claude"] = datetime.now().astimezone()
     return {"status": "ok"}
+
+
+@app.post("/api/usage/report")
+async def report_usage(req: UsageReportRequest):
+    if not req.source_id:
+        raise HTTPException(status_code=400, detail="source_id is required")
+    try:
+        with closing(_usage_conn()) as conn:
+            n = usage_store.upsert_points(
+                conn,
+                req.source_id,
+                req.source_label,
+                [p.model_dump() for p in req.points],
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("usage report failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "upserted": n}
