@@ -224,6 +224,27 @@
     background: #0f172a;
   }
   .tab:hover { border-color: #475569; color: #cbd5e1; }
+  .range-pills {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .range-pill {
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #cbd5e1;
+    border-radius: 999px;
+    padding: 0.15rem 0.75rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .range-pill:hover { border-color: #38bdf8; color: #e0f2fe; }
+  .range-pill.active {
+    border-color: #38bdf8;
+    background: #38bdf8;
+    color: #0f172a;
+    font-weight: 600;
+  }
 </style>
 </head>
 <body>
@@ -235,7 +256,14 @@
   <div class="updated" id="updated">加载中...</div>
   <div id="loading">正在获取数据...</div>
   <div class="grid" id="grid" style="display:none;"></div>
-  <div id="usage-chart-view" style="display:none;"></div>
+  <div id="usage-chart-view" style="display:none;">
+    <div class="range-pills" id="range-pills">
+      <button class="range-pill" data-range="90">90天</button>
+      <button class="range-pill" data-range="30">30天</button>
+      <button class="range-pill" data-range="7">7天</button>
+    </div>
+    <div id="usage-chart-container"></div>
+  </div>
 
 <script>
 const TIME_UNIT_LABELS = {
@@ -266,6 +294,24 @@ document.querySelectorAll('.tab').forEach(btn => {
 });
 
 applyTab(activeTab);
+
+const RANGE_KEY = 'ai-plan-insight:usage-range';
+let usageRange = Number(localStorage.getItem(RANGE_KEY)) || 90;
+
+function applyUsageRange(range) {
+  usageRange = range;
+  localStorage.setItem(RANGE_KEY, String(range));
+  document.querySelectorAll('.range-pill').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.getAttribute('data-range')) === range);
+  });
+  refreshUsageChart();
+}
+
+document.querySelectorAll('.range-pill').forEach(btn => {
+  btn.addEventListener('click', () => applyUsageRange(Number(btn.getAttribute('data-range'))));
+});
+
+applyUsageRange(usageRange);
 
 function formatTimeWindow(l) {
   const key = l.time_unit.toLowerCase();

@@ -23,3 +23,12 @@ def test_tab_state_keys_in_localstorage():
 def test_usage_chart_view_container_present():
     h = read_index()
     assert 'id="usage-chart-view"' in h
+
+
+def test_range_pills_present():
+    h = read_index()
+    assert "range-pill" in h
+    assert "90天" in h
+    assert "30天" in h
+    assert "7天" in h
+    assert "ai-plan-insight:usage-range" in h
