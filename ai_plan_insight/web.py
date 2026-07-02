@@ -47,7 +47,30 @@ _consecutive_failures: dict[str, int] = {}  # provider name -> consecutive fail 
 _prev_results: dict[str, UsageResponse] = {}  # last successful result per provider
 _config_path: str | None = None  # set by main() when --config is provided
 
-_PROVIDER_DISPLAY_NAMES = {}
+# Providers that have no fetch implementation and are fed exclusively via the
+# /api/push/* endpoints. They are allowed as keys in config.json (to carry an
+# `order` value) but must be skipped by the fetch loop.
+_PUSH_ONLY_PROVIDERS = {"cursor", "claude", "mimo_token_plan"}
+
+# provider config key -> display name. Built from the same source of truth as
+# `_build_provider` so the two never drift apart. Push-only entries use the
+# display name the push endpoint stamps on the UsageResponse (the mimo default
+# mirrors MimoPushRequest.provider).
+_PROVIDER_DISPLAY_NAMES = {
+    "kimi": "Kimi Coding Plan",
+    "bigmodel": "GLM Coding Plan",
+    "bigmodel_international": "白嫖 GLM Coding Plan 国际版",
+    "aiping": "AIPing",
+    "huawei_cloud": "华为云余额",
+    "zenmux": "ZenMux",
+    "codex": "自购 Codex 中转站",
+    "codex_security": "白嫖 Codex Security 中转",
+    "antigravity": "Antigravity",
+    "volcengine_ark": "火山方舟 Coding Plan",
+    "cursor": "Cursor",
+    "claude": "Claude 订阅",
+    "mimo_token_plan": "小米 MiMo Token Plan",
+}
 
 
 def _build_provider(name: str, config: ProviderConfig):
@@ -158,7 +181,7 @@ async def _fetch_one(name: str, config: ProviderConfig) -> UsageResponse:
 async def _fetch_all_usage() -> list[UsageResponse]:
     global _consecutive_failures, _prev_results
     config = load_config(_config_path)
-    names = list(config.providers.keys())
+    names = [n for n in config.providers.keys() if n not in _PUSH_ONLY_PROVIDERS]
     tasks = [_fetch_one(name, config.providers[name]) for name in names]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -201,23 +224,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
 
 
-def _provider_sort_key(resp: UsageResponse) -> int:
-    order = {
-        "自购 Codex 中转站": 10,
-        "白嫖 Codex Security 中转": 11,
-        "Claude 订阅": 12,
-        "ZenMux": 13,
-        "GLM Coding Plan": 20,
-        "白嫖 GLM Coding Plan 国际版": 21,
-        "火山方舟 Coding Plan": 22,
-        "Antigravity": 23,
-        "小米 MiMo Token Plan": 24,
-        "Cursor": 25,
-        "Kimi Coding Plan": 30,
-        "华为云余额": 35,
-        "AIPing": 50,
-    }
-    return order.get(resp.provider, 100)
+def _build_display_order_map() -> dict[str, int]:
+    """Map provider display name -> config `order` value, from the live config.
+
+    Used to sort cards in `/api/usage`. Display names that are not present in
+    config (e.g. a push for a provider with no config entry, or a mimo push
+    that overrides `provider`) fall back to 999 so they sort last.
+    """
+    config = load_config(_config_path)
+    order_map: dict[str, int] = {}
+    for key, prov_cfg in config.providers.items():
+        display_name = _PROVIDER_DISPLAY_NAMES.get(key, key)
+        order_map[display_name] = prov_cfg.order
+    return order_map
 
 
 @app.get("/api/usage", response_model=list[UsageResponse])
@@ -229,7 +248,11 @@ async def get_usage():
         if _pushed_at.get(key) and _pushed_at[key] >= cutoff
     ]
     combined = _cached_results + valid_pushed
-    combined.sort(key=_provider_sort_key)
+    order_map = _build_display_order_map()
+    # Sort by (order, display name): order governs position, the display name
+    # is a stable tiebreaker so multiple providers sharing the default 999
+    # (or the same explicit order) keep a deterministic order between refreshes.
+    combined.sort(key=lambda r: (order_map.get(r.provider, 999), r.provider))
     return combined
 
 

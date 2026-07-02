@@ -1,36 +1,51 @@
 {
   "providers": {
     "kimi": {
-      "api_key": "YOUR_KIMI_API_KEY"
+      "api_key": "YOUR_KIMI_API_KEY",
+      "order": 30
     },
     "huawei_cloud": {
       "user_name": "YOUR_HUAWEI_CLOUD_USER_NAME",
       "access_key_id": "YOUR_HUAWEI_CLOUD_ACCESS_KEY_ID",
-      "access_key_secret": "YOUR_HUAWEI_CLOUD_SECRET_ACCESS_KEY"
+      "access_key_secret": "YOUR_HUAWEI_CLOUD_SECRET_ACCESS_KEY",
+      "order": 35
     },
     "bigmodel": {
-      "api_key": "YOUR_BIGMODEL_API_KEY"
+      "api_key": "YOUR_BIGMODEL_API_KEY",
+      "order": 20
     },
     "bigmodel_international": {
-      "api_key": "YOUR_BIGMODEL_INTERNATIONAL_API_KEY"
+      "api_key": "YOUR_BIGMODEL_INTERNATIONAL_API_KEY",
+      "order": 21
     },
     "aiping": {
-      "api_key": "YOUR_AIPING_API_KEY"
+      "api_key": "YOUR_AIPING_API_KEY",
+      "order": 50
     },
     "zenmux": {
-      "api_key": "YOUR_ZENMUX_MANAGEMENT_API_KEY"
+      "api_key": "YOUR_ZENMUX_MANAGEMENT_API_KEY",
+      "order": 13
     },
     "antigravity": {
       "api_key": "YOUR_ANTIGRAVITY_API_KEY",
       "base_url": "http://your-antigravity-manager:8045",
-      "admin_password": "YOUR_ADMIN_PASSWORD_IF_SET"
+      "admin_password": "YOUR_ADMIN_PASSWORD_IF_SET",
+      "order": 23
     },
     "volcengine_ark": {
       "access_key_id": "YOUR_VOLCENGINE_ACCESS_KEY_ID",
-      "access_key_secret": "YOUR_VOLCENGINE_SECRET_ACCESS_KEY"
+      "access_key_secret": "YOUR_VOLCENGINE_SECRET_ACCESS_KEY",
+      "order": 22
     },
     "mimo_token_plan": {
-      "cookie": "api-platform_serviceToken=...; userId=...; api-platform_slh=...; api-platform_ph=..."
+      "cookie": "api-platform_serviceToken=...; userId=...; api-platform_slh=...; api-platform_ph=...",
+      "order": 24
+    },
+    "cursor": {
+      "order": 25
+    },
+    "claude": {
+      "order": 12
     }
   }
 }

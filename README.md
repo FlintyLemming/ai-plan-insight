@@ -101,6 +101,18 @@ docker compose up -d
 
 不需要的 Provider 直接删除即可。
 
+每个 Provider 还支持可选的 `order` 字段，用于控制卡片在面板中的显示顺序：数值越小越靠前，未填写时默认 `999`（排到最后）。推送类服务（`cursor` / `claude` / `mimo_token_plan`）也可以在 `providers` 里加一条只含 `order` 的占位项来指定它们的位置。
+
+```json
+{
+  "providers": {
+    "claude": { "order": 12 },
+    "bigmodel": { "api_key": "YOUR_BIGMODEL_API_KEY", "order": 20 },
+    "kimi": { "api_key": "YOUR_KIMI_API_KEY", "order": 30 }
+  }
+}
+```
+
 ## CLI 使用
 
 ```bash

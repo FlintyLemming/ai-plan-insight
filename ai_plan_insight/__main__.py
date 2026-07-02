@@ -94,7 +94,13 @@ async def _run_cli(args: argparse.Namespace) -> None:
 
     usages: list[UsageInfo] = []
 
+    # Providers that arrive via /api/push/* have no fetch implementation; skip
+    # them in the CLI so a config entry carrying only `order` doesn't crash.
+    push_only = {"cursor", "claude", "mimo_token_plan"}
+
     for provider_name, provider_config in config.providers.items():
+        if provider_name in push_only:
+            continue
         try:
             print(f"Fetching usage for {provider_name}...", file=sys.stderr)
             usage = await fetch_provider_usage(provider_name, provider_config)
