@@ -31,12 +31,14 @@ def test_report_request_defaults_optional_fields():
 
 
 import pytest
-from datetime import date
+from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 from ai_plan_insight import usage_store, web
+from ai_plan_insight.usage_store import UTC8
 
-TODAY = date.today().isoformat()
+TODAY = datetime.now(UTC8).date().isoformat()
+YESTERDAY = (datetime.now(UTC8).date() - timedelta(days=1)).isoformat()
 
 
 @pytest.fixture
@@ -59,7 +61,37 @@ def test_report_upserts_points_and_returns_count(usage_db):
         ],
     })
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "upserted": 2}
+    assert resp.json() == {"ok": True, "upserted": 2, "dropped": 0}
+
+
+def test_report_freezes_days_before_reported_at(usage_db):
+    client = TestClient(web.app)
+    first = client.post("/api/usage/report", json={
+        "source_id": "m1",
+        "reported_at": TODAY,
+        "points": [{"date": YESTERDAY, "model_id": "glm-5.2",
+                    "input_tokens": 100, "output_tokens": 0}],
+    })
+    assert first.json() == {"ok": True, "upserted": 1, "dropped": 0}
+    # corrupted local history tries to rewrite yesterday
+    second = client.post("/api/usage/report", json={
+        "source_id": "m1",
+        "reported_at": TODAY,
+        "points": [{"date": YESTERDAY, "model_id": "glm-5.2",
+                    "input_tokens": 1, "output_tokens": 0}],
+    })
+    assert second.json() == {"ok": True, "upserted": 0, "dropped": 1}
+    import sqlite3
+    rows = usage_store.query_timeseries(sqlite3.connect(usage_db), 7, {})
+    assert rows[0].input_tokens == 100
+
+
+def test_report_bad_reported_at_returns_422(usage_db):
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "m1", "reported_at": "2026/07/02", "points": [],
+    })
+    assert resp.status_code == 422
 
 
 def test_report_missing_source_id_returns_400(usage_db):
@@ -184,12 +216,14 @@ def test_timeseries_all_models_carries_input_output_and_is_not_collapsed(usage_d
     from ai_plan_insight.config import Config
     monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     client = TestClient(web.app)
-    for i in range(10):
-        client.post("/api/usage/report", json={
-            "source_id": "m1",
-            "points": [{"date": TODAY, "model_id": f"model-{i}",
-                        "input_tokens": 100 * (i + 1), "output_tokens": 50 * (i + 1)}],
-        })
+    # one full-day snapshot, as the agent sends it (a repeat post for the same
+    # date replaces the whole day, so models must arrive together)
+    client.post("/api/usage/report", json={
+        "source_id": "m1",
+        "points": [{"date": TODAY, "model_id": f"model-{i}",
+                    "input_tokens": 100 * (i + 1), "output_tokens": 50 * (i + 1)}
+                   for i in range(10)],
+    })
 
     body = client.get("/api/usage/timeseries?days=7").json()
     assert "all_models" in body

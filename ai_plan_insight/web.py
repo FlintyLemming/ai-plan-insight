@@ -432,17 +432,22 @@ async def report_usage(req: UsageReportRequest):
         raise HTTPException(status_code=400, detail="source_id is required")
     try:
         with closing(_usage_conn()) as conn:
-            n = usage_store.upsert_points(
+            written, dropped = usage_store.upsert_points(
                 conn,
                 req.source_id,
                 req.source_label,
                 [p.model_dump() for p in req.points],
+                reported_at=req.reported_at,
             )
             conn.commit()
     except Exception as e:
         logger.error("usage report failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
-    return {"ok": True, "upserted": n}
+    if dropped:
+        logger.info(
+            "usage report from %s: dropped %d point(s) for frozen days", req.source_id, dropped
+        )
+    return {"ok": True, "upserted": written, "dropped": dropped}
 
 
 def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesResponse:

@@ -112,9 +112,15 @@ class UsageReportRequest(BaseModel):
     `source_id` is validated for presence (non-empty) in the route handler so
     a missing/empty id returns 400, distinct from pydantic's 422 for
     malformed JSON / field errors.
+
+    `reported_at` is the agent's run date (UTC+8). Once the payload lands,
+    all of this source's days before it are frozen against later writes; a
+    payload without it (older agents) still respects existing frozen days
+    but does not advance the freeze watermark.
     """
     source_id: str | None = None
     source_label: str | None = None
+    reported_at: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     points: list[UsagePoint] = Field(default_factory=list)
 
 
