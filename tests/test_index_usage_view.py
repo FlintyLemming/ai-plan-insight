@@ -32,3 +32,16 @@ def test_range_pills_present():
     assert "30天" in h
     assert "7天" in h
     assert "ai-plan-insight:usage-range" in h
+
+
+def test_chart_renderer_and_palette_present():
+    h = read_index()
+    assert "function renderUsageChart" in h
+    assert "USAGE_COLORS" in h
+    assert "#38bdf8" in h   # palette present
+    assert "#64748b" in h   # "其他" color present
+
+
+def test_chart_empty_state_message_present():
+    h = read_index()
+    assert "暂无用量数据" in h

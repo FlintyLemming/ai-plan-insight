@@ -245,6 +245,48 @@
     color: #0f172a;
     font-weight: 600;
   }
+  #usage-chart-container { position: relative; width: 100%; max-width: 1140px; }
+  .usage-axis { stroke: #334155; stroke-width: 1; }
+  .usage-grid { stroke: #273449; stroke-width: 1; }
+  .usage-axis-text { fill: #64748b; font-size: 11px; }
+  .usage-legend-text { fill: #cbd5e1; font-size: 12px; }
+  .usage-hover { cursor: pointer; }
+  .empty-usage {
+    color: #64748b;
+    font-size: 0.95rem;
+    padding: 3rem 0;
+    text-align: center;
+  }
+  .usage-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.78rem;
+    color: #e2e8f0;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    transform: translate(-50%, calc(-100% - 8px));
+    white-space: nowrap;
+    z-index: 20;
+    display: none;
+  }
+  .usage-tooltip-date { font-weight: 600; margin-bottom: 0.3rem; color: #f1f5f9; }
+  .usage-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.85rem;
+    align-items: center;
+    padding: 0.12rem 0;
+  }
+  .usage-tooltip-model {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #cbd5e1;
+  }
+  .usage-tooltip-tokens { font-variant-numeric: tabular-nums; color: #e2e8f0; }
 </style>
 </head>
 <body>
@@ -312,6 +354,121 @@ document.querySelectorAll('.range-pill').forEach(btn => {
 });
 
 applyUsageRange(usageRange);
+
+const USAGE_COLORS = ['#38bdf8', '#f59e0b', '#34d399', '#f472b6', '#a78bfa', '#fbbf24', '#22d3ee', '#fb7185'];
+const USAGE_OTHER_COLOR = '#64748b';
+let lastUsageModels = [];  // [{label,color,...}] from the most recent fetch
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function formatUsageDate(label) {
+  const parts = String(label || '').split('-');
+  if (parts.length === 3) return `${parts[1]}月${parts[2]}日`;
+  return String(label);
+}
+
+function renderUsageChart(data) {
+  const container = document.getElementById('usage-chart-container');
+  if (!data || !data.days || data.days.length === 0) {
+    container.innerHTML = '<div class="empty-usage">暂无用量数据</div>';
+    return;
+  }
+
+  const days = data.days;
+  const modelSummary = data.models;
+  lastUsageModels = modelSummary;
+
+  const colorByLabel = {};
+  modelSummary.forEach(m => { colorByLabel[m.label] = m.color; });
+
+  const W = 1000, H = 400, padL = 52, padR = 16, padT = 16, padB = 44;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const baseY = H - padB;
+
+  const dailyTotals = days.map(d => d.models.reduce((s, m) => s + m.total, 0));
+  const maxTotal = Math.max(...dailyTotals, 1);
+
+  const n = days.length;
+  const slot = plotW / n;
+  const barW = Math.min(slot * 0.7, 44);
+
+  // Y gridlines + value labels
+  const steps = 4;
+  let gridSvg = '';
+  for (let i = 0; i <= steps; i++) {
+    const val = (maxTotal / steps) * i;
+    const y = baseY - (val / maxTotal) * plotH;
+    gridSvg += `<line class="usage-grid" x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}"/>`;
+    gridSvg += `<text class="usage-axis-text" x="${padL - 8}" y="${(y + 3).toFixed(1)}" text-anchor="end">${formatTokens(val)}</text>`;
+  }
+
+  // Stacked bars + hover capture + X labels
+  const labelEvery = n > 60 ? 7 : (n > 10 ? 3 : 1);
+  let barsSvg = '';
+  days.forEach((day, idx) => {
+    const cx = padL + slot * idx + slot / 2;
+    const x = cx - barW / 2;
+    let cursor = baseY;
+    const present = modelSummary
+      .map(m => day.models.find(dm => dm.label === m.label))
+      .filter(Boolean);
+    present.forEach(m => {
+      const h = (m.total / maxTotal) * plotH;
+      const y = cursor - h;
+      barsSvg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${m.color}"/>`;
+      cursor = y;
+    });
+    barsSvg += `<rect class="usage-hover" data-idx="${idx}" x="${(padL + slot * idx).toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent"/>`;
+    if (idx % labelEvery === 0) {
+      barsSvg += `<text class="usage-axis-text" x="${cx.toFixed(1)}" y="${(baseY + 18).toFixed(1)}" text-anchor="middle">${formatUsageDate(day.date)}</text>`;
+    }
+  });
+
+  // Legend, top-right inside the chart
+  let legendSvg = '';
+  modelSummary.forEach((m, i) => {
+    const ly = padT + 4 + i * 18;
+    legendSvg += `<rect x="${W - padR - 168}" y="${ly}" width="10" height="10" fill="${m.color}"/>`;
+    legendSvg += `<text class="usage-legend-text" x="${W - padR - 152}" y="${ly + 9}">${escapeHtml(m.label)} ${m.share_pct.toFixed(1)}%</text>`;
+  });
+
+  container.innerHTML = `
+<svg id="usage-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+  <line class="usage-axis" x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}"/>
+  ${gridSvg}
+  ${barsSvg}
+  ${legendSvg}
+</svg>
+<div class="usage-tooltip" id="usage-tooltip"></div>`;
+
+  // Tooltip wiring: position the overlay div at the mouse, render per-model rows.
+  const svgEl = document.getElementById('usage-svg');
+  const tooltip = document.getElementById('usage-tooltip');
+  const containerRect0 = container.getBoundingClientRect();
+  svgEl.querySelectorAll('.usage-hover').forEach(rect => {
+    rect.addEventListener('mousemove', (e) => {
+      const idx = Number(rect.getAttribute('data-idx'));
+      const day = days[idx];
+      const rows = day.models
+        .filter(m => m.total > 0)
+        .map(m => `<div class="usage-tooltip-row">
+            <span class="usage-tooltip-model"><span class="history-dot" style="background:${colorByLabel[m.label] || USAGE_OTHER_COLOR}"></span><span>${escapeHtml(m.label)}</span></span>
+            <span class="usage-tooltip-tokens">输入 ${formatTokens(m.input_tokens)} · 输出 ${formatTokens(m.output_tokens)} · 共 ${formatTokens(m.total)}</span>
+          </div>`).join('');
+      tooltip.innerHTML = `<div class="usage-tooltip-date">${formatUsageDate(day.date)}</div>${rows}`;
+      const cr = container.getBoundingClientRect();
+      tooltip.style.left = `${e.clientX - cr.left}px`;
+      tooltip.style.top = `${e.clientY - cr.top}px`;
+      tooltip.style.display = 'block';
+    });
+    rect.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  });
+}
 
 function formatTimeWindow(l) {
   const key = l.time_unit.toLowerCase();
