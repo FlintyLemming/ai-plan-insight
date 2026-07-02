@@ -47,5 +47,10 @@
     "claude": {
       "order": 12
     }
+  },
+  "model_aliases": {
+    "GLM 5.2": ["glm-5.2", "glm5.2"],
+    "GPT 5.2": ["gpt-5.2"],
+    "Claude Sonnet 4.5": ["claude-sonnet-4-5", "claude-sonnet-4-5-20250929"]
   }
 }
