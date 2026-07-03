@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "ai_plan_insight" / "index.html"
@@ -57,6 +58,18 @@ def test_usage_chart_view_has_full_width_layout():
     h = read_index()
     assert "#usage-chart-view" in h
     assert "#usage-chart-view {\n    width: 100%;" in h
+
+
+def test_usage_chart_y_axis_has_room_for_wide_labels():
+    h = read_index()
+    chart_renderer = h[h.index("function renderUsageChart"):h.index("// Stacked bars")]
+    pad_match = re.search(r"padL = (\d+)", chart_renderer)
+    offset_match = re.search(r'x="\$\{padL - (\d+)\}"', chart_renderer)
+
+    assert pad_match is not None
+    assert offset_match is not None
+    label_anchor_x = int(pad_match.group(1)) - int(offset_match.group(1))
+    assert label_anchor_x >= 70
 
 
 def test_usage_chart_segments_do_not_depend_on_day_model_color():
