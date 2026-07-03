@@ -19,12 +19,15 @@ UTC8 = timezone(timedelta(hours=8))
 
 _CREATE_USAGE_POINT = """
 CREATE TABLE IF NOT EXISTS usage_point (
-    date          TEXT NOT NULL,
-    source_id     TEXT NOT NULL,
-    model_id      TEXT NOT NULL,
-    input_tokens  INTEGER NOT NULL,
-    output_tokens INTEGER NOT NULL,
-    updated_at    TEXT NOT NULL,
+    date                TEXT NOT NULL,
+    source_id           TEXT NOT NULL,
+    model_id            TEXT NOT NULL,
+    input_tokens        INTEGER NOT NULL,
+    output_tokens       INTEGER NOT NULL,
+    cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens    INTEGER NOT NULL DEFAULT 0,
+    updated_at          TEXT NOT NULL,
     PRIMARY KEY (date, source_id, model_id)
 )
 """
@@ -40,13 +43,25 @@ CREATE TABLE IF NOT EXISTS source (
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """Create tables (idempotent) and enable WAL."""
+    """Create tables (idempotent) and enable WAL.
+
+    Also back-fills columns added after the initial schema: `source.frozen_before`
+    and the three token-breakdown columns on `usage_point` (cache_read_tokens,
+    cache_write_tokens, reasoning_tokens). Each is added via ALTER TABLE only if
+    absent, so existing databases upgrade in place without a manual migration.
+    """
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(_CREATE_USAGE_POINT)
     conn.execute(_CREATE_SOURCE)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(source)")}
     if "frozen_before" not in cols:
         conn.execute("ALTER TABLE source ADD COLUMN frozen_before TEXT")
+    usage_cols = {row[1] for row in conn.execute("PRAGMA table_info(usage_point)")}
+    for col in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
+        if col not in usage_cols:
+            conn.execute(
+                f"ALTER TABLE usage_point ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"
+            )
     conn.commit()
 
 
@@ -70,7 +85,9 @@ def upsert_points(
     """Apply one snapshot payload for one source in the caller's transaction.
 
     `points` items are mappings with keys: date, model_id, input_tokens,
-    output_tokens. Per-source freeze rule: points dated before the source's
+    output_tokens, and optionally cache_read_tokens, cache_write_tokens,
+    reasoning_tokens (default 0, so older agents omitting them still work).
+    Per-source freeze rule: points dated before the source's
     `frozen_before` watermark are dropped (those days are immutable). For each
     still-mutable date the payload covers, existing rows are replaced
     wholesale (delete-then-insert), so a model that vanished from a mutable
@@ -105,13 +122,27 @@ def upsert_points(
         for p in day_points:
             conn.execute(
                 "INSERT INTO usage_point "
-                "(date, source_id, model_id, input_tokens, output_tokens, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "(date, source_id, model_id, input_tokens, output_tokens, "
+                " cache_read_tokens, cache_write_tokens, reasoning_tokens, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(date, source_id, model_id) DO UPDATE SET "
                 "input_tokens=excluded.input_tokens, "
                 "output_tokens=excluded.output_tokens, "
+                "cache_read_tokens=excluded.cache_read_tokens, "
+                "cache_write_tokens=excluded.cache_write_tokens, "
+                "reasoning_tokens=excluded.reasoning_tokens, "
                 "updated_at=excluded.updated_at",
-                (d, source_id, p["model_id"], p["input_tokens"], p["output_tokens"], ts),
+                (
+                    d,
+                    source_id,
+                    p["model_id"],
+                    p["input_tokens"],
+                    p["output_tokens"],
+                    p.get("cache_read_tokens", 0),
+                    p.get("cache_write_tokens", 0),
+                    p.get("reasoning_tokens", 0),
+                    ts,
+                ),
             )
             written += 1
 
@@ -140,6 +171,9 @@ class TimeseriesRow:
     raw_ids: list[str]
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    reasoning_tokens: int
     total: int
 
 
@@ -153,27 +187,46 @@ def query_timeseries(
     Storage keeps raw model_ids; here each is mapped through `alias_lookup`
     (defaulting to the raw id itself), then re-aggregated by (date, label)
     so multiple raw ids sharing a canonical label collapse into one row.
+
+    `total` is the sum of all five token categories (input + output +
+    cache_read + cache_write + reasoning), matching tokscale's totalTokens.
     """
     today = datetime.now(UTC8).date()
     start = today - timedelta(days=days - 1)
     cur = conn.execute(
-        "SELECT date, model_id, SUM(input_tokens), SUM(output_tokens) "
+        "SELECT date, model_id, "
+        "SUM(input_tokens), SUM(output_tokens), "
+        "SUM(cache_read_tokens), SUM(cache_write_tokens), SUM(reasoning_tokens) "
         "FROM usage_point WHERE date >= ? "
         "GROUP BY date, model_id ORDER BY date, model_id",
         (start.isoformat(),),
     )
     agg: dict[tuple[str, str], dict[str, Any]] = {}
-    for d, model_id, in_tok, out_tok in cur.fetchall():
+    for d, model_id, in_tok, out_tok, cr_tok, cw_tok, rs_tok in cur.fetchall():
         label = alias_lookup.get(model_id, model_id)
         in_tok = in_tok or 0
         out_tok = out_tok or 0
+        cr_tok = cr_tok or 0
+        cw_tok = cw_tok or 0
+        rs_tok = rs_tok or 0
         slot = agg.setdefault(
             (d, label),
-            {"input_tokens": 0, "output_tokens": 0, "total": 0, "raw_ids": set()},
+            {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "reasoning_tokens": 0,
+                "total": 0,
+                "raw_ids": set(),
+            },
         )
         slot["input_tokens"] += in_tok
         slot["output_tokens"] += out_tok
-        slot["total"] += in_tok + out_tok
+        slot["cache_read_tokens"] += cr_tok
+        slot["cache_write_tokens"] += cw_tok
+        slot["reasoning_tokens"] += rs_tok
+        slot["total"] += in_tok + out_tok + cr_tok + cw_tok + rs_tok
         slot["raw_ids"].add(model_id)
 
     rows = []
@@ -185,6 +238,9 @@ def query_timeseries(
                 raw_ids=sorted(v["raw_ids"]),
                 input_tokens=v["input_tokens"],
                 output_tokens=v["output_tokens"],
+                cache_read_tokens=v["cache_read_tokens"],
+                cache_write_tokens=v["cache_write_tokens"],
+                reasoning_tokens=v["reasoning_tokens"],
                 total=v["total"],
             )
         )

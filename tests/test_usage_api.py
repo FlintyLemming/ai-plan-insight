@@ -255,3 +255,45 @@ def test_timeseries_models_summary_includes_input_output(usage_db, monkeypatch):
     m = body["models"][0]
     assert m["input_tokens"] == 300
     assert m["output_tokens"] == 120
+
+
+def test_report_accepts_token_breakdown_and_timeseries_surfaces_it(usage_db, monkeypatch):
+    """The five token categories round-trip end-to-end through report -> timeseries."""
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "m1",
+        "points": [{
+            "date": TODAY, "model_id": "glm-5.2",
+            "input_tokens": 100, "output_tokens": 50,
+            "cache_read_tokens": 80, "cache_write_tokens": 20, "reasoning_tokens": 5,
+        }],
+    })
+    assert resp.status_code == 200
+    body = client.get("/api/usage/timeseries?days=7").json()
+    m = body["days"][0]["models"][0]
+    assert m["cache_read_tokens"] == 80
+    assert m["cache_write_tokens"] == 20
+    assert m["reasoning_tokens"] == 5
+    assert m["total"] == 255  # input+output+cache_read+cache_write+reasoning
+    summary = body["models"][0]
+    assert summary["cache_read_tokens"] == 80
+    assert summary["grand_total"] == 255
+
+
+def test_report_legacy_payload_without_cache_still_accepted(usage_db, monkeypatch):
+    """An older reporter sending only input/output must keep working (back-compat)."""
+    from ai_plan_insight.config import Config
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "m1",
+        "points": [{"date": TODAY, "model_id": "glm-5.2",
+                    "input_tokens": 100, "output_tokens": 50}],
+    })
+    assert resp.status_code == 200
+    body = client.get("/api/usage/timeseries?days=7").json()
+    m = body["days"][0]["models"][0]
+    assert m["cache_read_tokens"] == 0
+    assert m["total"] == 150

@@ -627,7 +627,7 @@ function renderUsageChart(data) {
         .filter(m => m.total > 0)
         .map(m => `<div class="usage-tooltip-row">
             <span class="usage-tooltip-model"><span class="history-dot" style="background:${colorByLabel[m.label] || USAGE_OTHER_COLOR}"></span><span>${escapeHtml(m.label)}</span></span>
-            <span class="usage-tooltip-tokens">输入 ${formatTokens(m.input_tokens)} · 输出 ${formatTokens(m.output_tokens)} · 共 ${formatTokens(m.total)}</span>
+            <span class="usage-tooltip-tokens">输入 ${formatTokens(m.input_tokens)} · 输出 ${formatTokens(m.output_tokens)} · 缓存读 ${formatTokens(m.cache_read_tokens || 0)} · 缓存写 ${formatTokens(m.cache_write_tokens || 0)} · 推理 ${formatTokens(m.reasoning_tokens || 0)} · 共 ${formatTokens(m.total)}</span>
           </div>`).join('');
       tooltip.innerHTML = `<div class="usage-tooltip-date">${formatUsageDate(day.date)}</div>${rows}`;
       const cr = container.getBoundingClientRect();
@@ -686,6 +686,10 @@ function renderUsageTable() {
       </span></td>
       <td class="num">${formatTokens(m.input_tokens || 0)}</td>
       <td class="num">${formatTokens(m.output_tokens || 0)}</td>
+      <td class="num">${formatTokens(m.cache_read_tokens || 0)}</td>
+      <td class="num">${formatTokens(m.cache_write_tokens || 0)}</td>
+      <td class="num">${formatTokens(m.reasoning_tokens || 0)}</td>
+      <td class="num">${formatTokens(m.grand_total || 0)}</td>
     </tr>`;
   }).join('');
 
@@ -713,6 +717,10 @@ function renderUsageTable() {
         <th class="col-model">模型名</th>
         <th class="num">输入 token</th>
         <th class="num">输出 token</th>
+        <th class="num">缓存读</th>
+        <th class="num">缓存写</th>
+        <th class="num">推理</th>
+        <th class="num">总计</th>
       </tr>
     </thead>
     <tbody>${rowsHtml}</tbody>

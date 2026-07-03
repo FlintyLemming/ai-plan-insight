@@ -460,10 +460,16 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
     grand: dict[str, int] = {}
     grand_in: dict[str, int] = {}
     grand_out: dict[str, int] = {}
+    grand_cr: dict[str, int] = {}
+    grand_cw: dict[str, int] = {}
+    grand_rs: dict[str, int] = {}
     for r in rows:
         grand[r.label] = grand.get(r.label, 0) + r.total
         grand_in[r.label] = grand_in.get(r.label, 0) + r.input_tokens
         grand_out[r.label] = grand_out.get(r.label, 0) + r.output_tokens
+        grand_cr[r.label] = grand_cr.get(r.label, 0) + r.cache_read_tokens
+        grand_cw[r.label] = grand_cw.get(r.label, 0) + r.cache_write_tokens
+        grand_rs[r.label] = grand_rs.get(r.label, 0) + r.reasoning_tokens
 
     ranked = sorted(grand.items(), key=lambda kv: kv[1], reverse=True)
     top_labels = [label for label, _ in ranked[:USAGE_PALETTE_LIMIT]]
@@ -486,9 +492,13 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
             resolved_label, _ = resolve(r.label)
             slot = agg.setdefault(resolved_label, {
                 "input_tokens": 0, "output_tokens": 0, "total": 0, "raw_ids": set(),
+                "cache_read_tokens": 0, "cache_write_tokens": 0, "reasoning_tokens": 0,
             })
             slot["input_tokens"] += r.input_tokens
             slot["output_tokens"] += r.output_tokens
+            slot["cache_read_tokens"] += r.cache_read_tokens
+            slot["cache_write_tokens"] += r.cache_write_tokens
+            slot["reasoning_tokens"] += r.reasoning_tokens
             slot["total"] += r.total
             slot["raw_ids"].update(r.raw_ids)
         days_out.append({
@@ -499,6 +509,9 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
                     "raw_ids": sorted(s["raw_ids"]),
                     "input_tokens": s["input_tokens"],
                     "output_tokens": s["output_tokens"],
+                    "cache_read_tokens": s["cache_read_tokens"],
+                    "cache_write_tokens": s["cache_write_tokens"],
+                    "reasoning_tokens": s["reasoning_tokens"],
                     "total": s["total"],
                 }
                 for rl, s in agg.items()
@@ -513,16 +526,23 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
         slot = summary.setdefault(resolved_label, {
             "grand_total": 0, "color": color,
             "input_tokens": 0, "output_tokens": 0,
+            "cache_read_tokens": 0, "cache_write_tokens": 0, "reasoning_tokens": 0,
         })
         slot["grand_total"] += total
         slot["input_tokens"] += grand_in.get(label, 0)
         slot["output_tokens"] += grand_out.get(label, 0)
+        slot["cache_read_tokens"] += grand_cr.get(label, 0)
+        slot["cache_write_tokens"] += grand_cw.get(label, 0)
+        slot["reasoning_tokens"] += grand_rs.get(label, 0)
     models_out = [
         {
             "label": rl,
             "color": s["color"],
             "input_tokens": s["input_tokens"],
             "output_tokens": s["output_tokens"],
+            "cache_read_tokens": s["cache_read_tokens"],
+            "cache_write_tokens": s["cache_write_tokens"],
+            "reasoning_tokens": s["reasoning_tokens"],
             "grand_total": s["grand_total"],
             "share_pct": round(s["grand_total"] * 100 / grand_total_all, 1),
         }
@@ -538,6 +558,9 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
             "color": color_of.get(label, USAGE_OTHER_COLOR),
             "input_tokens": grand_in.get(label, 0),
             "output_tokens": grand_out.get(label, 0),
+            "cache_read_tokens": grand_cr.get(label, 0),
+            "cache_write_tokens": grand_cw.get(label, 0),
+            "reasoning_tokens": grand_rs.get(label, 0),
             "grand_total": total,
             "share_pct": round(total * 100 / grand_total_all, 1),
         }

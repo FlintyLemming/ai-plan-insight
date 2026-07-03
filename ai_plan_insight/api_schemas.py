@@ -99,11 +99,20 @@ from pydantic import Field
 
 
 class UsagePoint(BaseModel):
-    """One (date, model) token row submitted by an agent client."""
+    """One (date, model) token row submitted by an agent client.
+
+    The five token categories are mutually exclusive and additive, matching
+    tokscale's breakdown: total = input + output + cache_read + cache_write
+    + reasoning. The cache/reasoning fields default to 0 so older agents
+    that only send input/output still validate.
+    """
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     model_id: str
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
+    cache_read_tokens: int = Field(default=0, ge=0)
+    cache_write_tokens: int = Field(default=0, ge=0)
+    reasoning_tokens: int = Field(default=0, ge=0)
 
 
 class UsageReportRequest(BaseModel):
@@ -129,6 +138,9 @@ class UsageDayModel(BaseModel):
     raw_ids: list[str]
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
     total: int
 
 
@@ -142,6 +154,9 @@ class UsageModelSummary(BaseModel):
     color: str
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
     grand_total: int
     share_pct: float
 

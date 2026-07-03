@@ -254,3 +254,94 @@ def test_init_schema_migrates_old_source_table(tmp_path):
     # and the freeze machinery works on the migrated table
     usage_store.upsert_points(conn, "m1", None, [_point(TODAY)], reported_at=TODAY)
     conn.close()
+
+
+def test_init_schema_adds_token_breakdown_columns_to_old_usage_point(tmp_path):
+    """A usage_point table from before cache/reasoning columns is upgraded in place."""
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    # pre-cache/reasoning schema: only input + output + updated_at
+    conn.execute(
+        "CREATE TABLE usage_point ("
+        " date TEXT NOT NULL, source_id TEXT NOT NULL, model_id TEXT NOT NULL,"
+        " input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,"
+        " updated_at TEXT NOT NULL,"
+        " PRIMARY KEY (date, source_id, model_id))"
+    )
+    conn.execute(
+        "INSERT INTO usage_point VALUES (?, 'm1', 'glm-5.2', 100, 50, '2026-01-01')",
+        (TODAY,),
+    )
+    conn.commit()
+    usage_store.init_schema(conn)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(usage_point)")}
+    assert {"cache_read_tokens", "cache_write_tokens", "reasoning_tokens"} <= cols
+    # the pre-existing row is intact, and the new columns defaulted to 0
+    rows = usage_store.query_timeseries(conn, 7, {})
+    assert len(rows) == 1
+    assert rows[0].input_tokens == 100
+    assert rows[0].output_tokens == 50
+    assert rows[0].cache_read_tokens == 0
+    assert rows[0].cache_write_tokens == 0
+    assert rows[0].reasoning_tokens == 0
+    conn.close()
+
+
+def test_upsert_persists_token_breakdown(tmp_path):
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 100, "output_tokens": 50,
+         "cache_read_tokens": 80, "cache_write_tokens": 20, "reasoning_tokens": 5},
+    ])
+    rows = usage_store.query_timeseries(conn, 7, {})
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.input_tokens == 100
+    assert r.output_tokens == 50
+    assert r.cache_read_tokens == 80
+    assert r.cache_write_tokens == 20
+    assert r.reasoning_tokens == 5
+    conn.close()
+
+
+def test_total_is_sum_of_five_categories(tmp_path):
+    """total = input + output + cache_read + cache_write + reasoning (matches tokscale)."""
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 100, "output_tokens": 50,
+         "cache_read_tokens": 80, "cache_write_tokens": 20, "reasoning_tokens": 5},
+    ])
+    rows = usage_store.query_timeseries(conn, 7, {})
+    assert rows[0].total == 255  # 100+50+80+20+5, NOT 150
+    conn.close()
+
+
+def test_cache_reasoning_default_to_zero_for_legacy_payload(tmp_path):
+    """Old reporters that omit cache/reasoning still work; those columns read as 0."""
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 100, "output_tokens": 50},
+    ])
+    rows = usage_store.query_timeseries(conn, 7, {})
+    r = rows[0]
+    assert r.cache_read_tokens == 0
+    assert r.cache_write_tokens == 0
+    assert r.reasoning_tokens == 0
+    assert r.total == 150
+    conn.close()
+
+
+def test_cross_source_sum_includes_cache_reasoning(tmp_path):
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 100, "output_tokens": 0,
+         "cache_read_tokens": 1000, "cache_write_tokens": 0, "reasoning_tokens": 0},
+    ])
+    usage_store.upsert_points(conn, "m2", None, [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 200, "output_tokens": 0,
+         "cache_read_tokens": 2000, "cache_write_tokens": 0, "reasoning_tokens": 0},
+    ])
+    rows = usage_store.query_timeseries(conn, 7, {})
+    assert rows[0].cache_read_tokens == 3000  # summed across sources
+    assert rows[0].total == 3300  # 300 + 3000
+    conn.close()
