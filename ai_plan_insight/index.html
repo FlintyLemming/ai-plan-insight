@@ -234,8 +234,14 @@
   .tab:hover { border-color: #475569; color: #cbd5e1; }
   .range-pills {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 0.4rem;
     margin-bottom: 1rem;
+  }
+  .range-pill-group {
+    display: flex;
+    gap: 0.4rem;
   }
   .range-pill {
     border: 1px solid #475569;
@@ -252,6 +258,15 @@
     background: #38bdf8;
     color: #0f172a;
     font-weight: 600;
+  }
+  .range-total {
+    font-size: 0.82rem;
+    color: #94a3b8;
+  }
+  .range-total strong {
+    color: #f1f5f9;
+    font-weight: 600;
+    margin-left: 0.3rem;
   }
   #usage-chart-view {
     width: 100%;
@@ -451,9 +466,12 @@
   <div class="grid" id="grid" style="display:none;"></div>
   <div id="usage-chart-view" style="display:none;">
     <div class="range-pills" id="range-pills">
-      <button class="range-pill" data-range="90">90天</button>
-      <button class="range-pill" data-range="30">30天</button>
-      <button class="range-pill" data-range="7">7天</button>
+      <div class="range-pill-group">
+        <button class="range-pill" data-range="90">90天</button>
+        <button class="range-pill" data-range="30">30天</button>
+        <button class="range-pill" data-range="7">7天</button>
+      </div>
+      <div class="range-total" id="range-total">总用量：<strong>-</strong></div>
     </div>
     <div id="usage-chart-container"></div>
     <div id="usage-table-container"></div>
@@ -533,17 +551,23 @@ function formatUsageDate(label) {
 function renderUsageChart(data) {
   const container = document.getElementById('usage-chart-container');
   const tableContainer = document.getElementById('usage-table-container');
+  const totalEl = document.getElementById('range-total');
   tableAllModels = (data && Array.isArray(data.all_models)) ? data.all_models : [];
   tableCurrentPage = 1;
   if (!data || !data.days || data.days.length === 0) {
     container.innerHTML = '<div class="empty-usage">暂无用量数据</div>';
     if (tableContainer) tableContainer.innerHTML = '';
+    if (totalEl) totalEl.innerHTML = '总用量：<strong>-</strong>';
     return;
   }
 
   const days = data.days;
   const modelSummary = data.models;
   lastUsageModels = modelSummary;
+
+  // Calculate grand total across all days and models
+  const grandTotal = modelSummary.reduce((sum, m) => sum + (m.grand_total || 0), 0);
+  if (totalEl) totalEl.innerHTML = `总用量：<strong>${formatTokens(grandTotal)}</strong>`;
 
   const colorByLabel = {};
   modelSummary.forEach(m => { colorByLabel[m.label] = m.color; });
