@@ -8,7 +8,17 @@
 
 ## 预览
 
-![Web 面板预览](docs/screenshot.png)
+### 订阅用量总览
+
+以卡片形式聚合展示各 AI Coding Plan 的用量、余额和刷新时间，底部附带 30 天用量趋势图。
+
+![订阅用量面板](docs/screenshot-subscription.png)
+
+### 总模型用量
+
+按供应商汇总各模型的 Token 消耗明细，支持分页浏览历史记录。
+
+![总模型用量](docs/screenshot-model-usage.png)
 
 ## 用量获取方式一览
 
@@ -26,6 +36,7 @@
 | MiMo Token Plan | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [mimo-usage-agent](https://github.com/FlintyLemming/mimo-usage-agent) |
 | Antigravity | 🤖 需要本地 Agent | 使用 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager)，但原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
 | Claude 订阅 | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [claude-sub-agent](https://github.com/FlintyLemming/claude-sub-agent) |
+| 模型 Token 用量 | 🤖 需要本地 Agent | 抓取各模型 Token 消耗明细后推送到面板，汇总展示在「总模型用量」表格 | [ai-usage-agent](https://github.com/FlintyLemming/ai-usage-agent) |
 
 ## 部署
 
@@ -207,3 +218,44 @@ curl -X POST http://localhost:8000/api/push/claude \
     }
   }'
 ```
+
+#### 推送模型 Token 用量
+
+将各模型的 Token 消耗明细推送到面板，汇总展示在「总模型用量」表格中。可使用 [ai-usage-agent](https://github.com/FlintyLemming/ai-usage-agent) 自动抓取并推送。
+
+```bash
+curl -X POST http://localhost:8000/api/usage/report \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_id": "my-agent",
+    "source_label": "My Agent",
+    "reported_at": "2026-07-03",
+    "points": [
+      {
+        "date": "2026-07-03",
+        "model_id": "claude-3-5-sonnet",
+        "input_tokens": 15000,
+        "output_tokens": 8000,
+        "cache_read_tokens": 5000,
+        "cache_write_tokens": 2000,
+        "reasoning_tokens": 1000
+      }
+    ]
+  }'
+```
+
+**参数说明：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `source_id` | string | ✅ | 推送来源标识，用于区分不同 Agent |
+| `source_label` | string | ❌ | 推送来源的显示名称 |
+| `reported_at` | string (YYYY-MM-DD) | ❌ | Agent 运行日期，该日期之前的数据将被冻结（不可修改） |
+| `points` | array | ✅ | Token 用量明细列表 |
+| `points[].date` | string (YYYY-MM-DD) | ✅ | 用量日期 |
+| `points[].model_id` | string | ✅ | 模型标识符 |
+| `points[].input_tokens` | int | ✅ | 输入 Token 数 |
+| `points[].output_tokens` | int | ✅ | 输出 Token 数 |
+| `points[].cache_read_tokens` | int | ❌ | Cache Read Token 数，默认 0 |
+| `points[].cache_write_tokens` | int | ❌ | Cache Write Token 数，默认 0 |
+| `points[].reasoning_tokens` | int | ❌ | Reasoning Token 数，默认 0 |

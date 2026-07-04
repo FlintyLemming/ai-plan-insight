@@ -1,0 +1,12 @@
+services:
+  ai-plan-insight:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8000"
+    volumes:
+      - ./test-config.json:/app/config.json:ro
+      - ./usage.db:/app/usage.db:ro
+    command: python -m ai_plan_insight --web --host 0.0.0.0 --port 8000 --usage-db /app/usage.db
+    restart: "no"
