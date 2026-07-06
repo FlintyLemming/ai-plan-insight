@@ -259,3 +259,59 @@ curl -X POST http://localhost:8000/api/usage/report \
 | `points[].cache_read_tokens` | int | ❌ | Cache Read Token 数，默认 0 |
 | `points[].cache_write_tokens` | int | ❌ | Cache Write Token 数，默认 0 |
 | `points[].reasoning_tokens` | int | ❌ | Reasoning Token 数，默认 0 |
+
+## Push API Authentication
+
+All push endpoints now accept an optional `Authorization` header:
+
+```bash
+Authorization: Bearer <push_auth_secret>
+```
+
+Set `push_auth_secret` in `config.json`. While `enforce_push_auth` is `false` (the default), missing or incorrect tokens are still accepted but recorded as unauthenticated. Once all clients have been updated, set `enforce_push_auth` to `true` to reject unauthenticated requests with `401 Unauthorized`.
+
+### Affected endpoints
+
+- `POST /api/push/antigravity`
+- `POST /api/push/cursor`
+- `POST /api/push/mimo`
+- `POST /api/push/claude`
+- `POST /api/usage/report`
+
+### Example: authenticated Cursor push
+
+```bash
+curl -X POST http://localhost:8000/api/push/cursor \
+  -H "Authorization: Bearer ai-plan-insight-push-token-2026" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "membership": "Pro",
+    "autoPercentUsed": 45.5,
+    "apiPercentUsed": 12.3,
+    "billingEnd": "2026-07-01T00:00:00Z"
+  }'
+```
+
+### Example: authenticated usage report
+
+```bash
+curl -X POST http://localhost:8000/api/usage/report \
+  -H "Authorization: Bearer ai-plan-insight-push-token-2026" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_id": "my-agent",
+    "source_label": "My Agent",
+    "reported_at": "2026-07-03",
+    "points": [...]
+  }'
+```
+
+### Monitor migration
+
+Use `GET /api/admin/sources` to see whether every source is sending a valid token:
+
+```bash
+curl http://localhost:8000/api/admin/sources
+```
+
+When every `auth_valid` is `true`, it is safe to enable `enforce_push_auth`.
