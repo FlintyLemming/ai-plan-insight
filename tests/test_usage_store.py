@@ -93,6 +93,53 @@ def test_record_snapshot_persists_items(tmp_path):
     conn.close()
 
 
+def test_record_snapshot_survives_unparseable_values_and_empty_lists(tmp_path):
+    conn = _connect(tmp_path)
+    usage = UsageResponse(
+        provider="Cursor",
+        limits=[
+            LimitResponse(
+                duration=1,
+                time_unit="API 用量",
+                limit="100",
+                used="100%",  # unparseable
+                remaining="0",
+            )
+        ],
+        balances={"membership": "Pro"},  # unparseable
+    )
+    snapshot_id = usage_store.record_snapshot(conn, usage, source_kind="push")
+    conn.commit()
+
+    limit = conn.execute(
+        "SELECT value_text, value_number FROM provider_item "
+        "WHERE snapshot_id = ? AND item_kind = 'limit'",
+        (snapshot_id,),
+    ).fetchone()
+    assert limit == ("100%", None)
+
+    balance = conn.execute(
+        "SELECT value_text, value_number FROM provider_item "
+        "WHERE snapshot_id = ? AND item_kind = 'balance'",
+        (snapshot_id,),
+    ).fetchone()
+    assert balance == ("Pro", None)
+
+    # Snapshot is still written even though no items were produced from empty collections
+    empty_usage = UsageResponse(provider="Antigravity")
+    empty_id = usage_store.record_snapshot(conn, empty_usage, source_kind="push")
+    conn.commit()
+    row = conn.execute(
+        "SELECT provider FROM provider_snapshot WHERE snapshot_id = ?", (empty_id,)
+    ).fetchone()
+    assert row[0] == "Antigravity"
+    item_count = conn.execute(
+        "SELECT COUNT(*) FROM provider_item WHERE snapshot_id = ?", (empty_id,)
+    ).fetchone()[0]
+    assert item_count == 0
+    conn.close()
+
+
 TODAY = datetime.now(UTC8).date().isoformat()
 YESTERDAY = (datetime.now(UTC8).date() - timedelta(days=1)).isoformat()
 TWO_DAYS_AGO = (datetime.now(UTC8).date() - timedelta(days=2)).isoformat()
