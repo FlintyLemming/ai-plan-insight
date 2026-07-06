@@ -417,6 +417,7 @@ async def push_antigravity(req: AntigravityPushRequest, request: Request):
             ),
         ]
     )
+    _persist_usage_snapshot(_pushed_results["antigravity"], "push")
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["antigravity"] = datetime.now().astimezone()
     return {"status": "ok"}
@@ -451,6 +452,7 @@ async def push_cursor(req: CursorPushRequest, request: Request):
         ],
         balances={"到期时间": end_display},
     )
+    _persist_usage_snapshot(_pushed_results["cursor"], "push")
     _last_updated = dt.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["cursor"] = dt.now().astimezone()
     return {"status": "ok"}
@@ -467,6 +469,7 @@ async def push_mimo(req: MimoPushRequest, request: Request):
         limits=req.limits,
         balances=req.balances,
     )
+    _persist_usage_snapshot(_pushed_results["mimo_token_plan"], "push")
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["mimo_token_plan"] = datetime.now().astimezone()
     return {"status": "ok"}
@@ -497,6 +500,7 @@ async def push_claude(req: ClaudePushRequest, request: Request):
             ),
         ],
     )
+    _persist_usage_snapshot(_pushed_results["claude"], "push")
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["claude"] = datetime.now().astimezone()
     return {"status": "ok"}
