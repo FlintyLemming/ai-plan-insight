@@ -112,6 +112,40 @@ def _verify_push_auth(request: Request, source_id: str) -> tuple[bool, str | Non
         return True, None
     return False, "invalid"
 
+
+def _record_push_auth(conn: sqlite3.Connection, source_id: str, is_valid: bool) -> None:
+    """Persist the auth outcome for a source; caller must commit."""
+    now = datetime.now().astimezone().isoformat()
+    usage_store.update_source_auth(conn, source_id, is_valid, now)
+
+
+def _ensure_source_row(conn: sqlite3.Connection, source_id: str) -> None:
+    """Create an empty source row if it does not already exist."""
+    conn.execute(
+        "INSERT INTO source (source_id) VALUES (?) "
+        "ON CONFLICT(source_id) DO NOTHING",
+        (source_id,),
+    )
+
+
+def _handle_push_auth(request: Request, source_id: str) -> None:
+    """Verify auth and persist the outcome; raise 401 in hard mode on failure.
+
+    In soft mode, auth failure is logged but the request continues.
+    """
+    config = load_config(_config_path)
+    is_valid, reason = _verify_push_auth(request, source_id)
+    if not is_valid:
+        logger.warning("push auth failed for %s: %s", source_id, reason)
+    if config.enforce_push_auth and not is_valid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Persist the outcome even when the row may not exist yet (some push-only
+    # sources may not have reported through /api/usage/report). Insert a stub
+    # row so the status is visible in /api/admin/sources.
+    with closing(_usage_conn()) as conn:
+        _ensure_source_row(conn, source_id)
+        _record_push_auth(conn, source_id, is_valid)
+        conn.commit()
 # Providers that have no fetch implementation and are fed exclusively via the
 # /api/push/* endpoints. They are allowed as keys in config.json (to carry an
 # `order` value) but must be skipped by the fetch loop.
@@ -339,7 +373,8 @@ async def index():
 
 
 @app.post("/api/push/antigravity")
-async def push_antigravity(req: AntigravityPushRequest):
+async def push_antigravity(req: AntigravityPushRequest, request: Request):
+    _handle_push_auth(request, "antigravity")
     global _last_updated, _pushed_results, _pushed_at
     _pushed_results["antigravity"] = UsageResponse(
         provider="Antigravity",
@@ -377,7 +412,8 @@ async def push_antigravity(req: AntigravityPushRequest):
 
 
 @app.post("/api/push/cursor")
-async def push_cursor(req: CursorPushRequest):
+async def push_cursor(req: CursorPushRequest, request: Request):
+    _handle_push_auth(request, "cursor")
     global _last_updated, _pushed_results, _pushed_at
     from datetime import datetime as dt
 
@@ -410,7 +446,8 @@ async def push_cursor(req: CursorPushRequest):
 
 
 @app.post("/api/push/mimo")
-async def push_mimo(req: MimoPushRequest):
+async def push_mimo(req: MimoPushRequest, request: Request):
+    _handle_push_auth(request, "mimo_token_plan")
     global _last_updated, _pushed_results, _pushed_at
     _pushed_results["mimo_token_plan"] = UsageResponse(
         provider=req.provider,
@@ -425,7 +462,8 @@ async def push_mimo(req: MimoPushRequest):
 
 
 @app.post("/api/push/claude")
-async def push_claude(req: ClaudePushRequest):
+async def push_claude(req: ClaudePushRequest, request: Request):
+    _handle_push_auth(request, "claude")
     global _last_updated, _pushed_results, _pushed_at
     _pushed_results["claude"] = UsageResponse(
         provider="Claude 订阅",

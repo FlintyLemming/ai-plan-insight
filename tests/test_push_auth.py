@@ -108,3 +108,82 @@ def test_verify_auth_no_secret_config():
     client = TestClient(app)
     resp = client.post("/test", headers={"Authorization": "Bearer abc"})
     assert resp.json() == {"is_valid": False, "reason": "invalid"}
+
+
+from datetime import datetime
+
+VALID_CLAUDE_PAYLOAD = {
+    "seven_day": {"utilization": 45.2, "resets_at": "2026-07-08T12:00:00Z"},
+    "five_hour": {"utilization": 12.8, "resets_at": "2026-07-01T15:00:00Z"},
+}
+
+
+def _setup(tmp_path, monkeypatch, secret="abc", enforce=False):
+    db = tmp_path / "usage.db"
+    monkeypatch.setattr(web, "_usage_db_path", db)
+    usage_store.init_db(db)
+    monkeypatch.setattr(
+        web, "load_config", lambda _=None: Config(
+            providers={}, push_auth_secret=secret, enforce_push_auth=enforce
+        )
+    )
+    web._pushed_results.clear()
+    web._pushed_at.clear()
+
+
+def test_push_claude_soft_no_token_still_ok(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    resp = client.post("/api/push/claude", json=VALID_CLAUDE_PAYLOAD)
+    assert resp.status_code == 200
+
+
+def test_push_claude_soft_invalid_token_still_ok(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    resp = client.post(
+        "/api/push/claude",
+        json=VALID_CLAUDE_PAYLOAD,
+        headers={"Authorization": "Bearer wrong"},
+    )
+    assert resp.status_code == 200
+
+
+def test_push_claude_hard_invalid_token_returns_401(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, secret="abc", enforce=True)
+    client = TestClient(web.app)
+    resp = client.post(
+        "/api/push/claude",
+        json=VALID_CLAUDE_PAYLOAD,
+        headers={"Authorization": "Bearer wrong"},
+    )
+    assert resp.status_code == 401
+
+
+def test_push_claude_valid_token_sets_auth_valid(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    client.post(
+        "/api/push/claude",
+        json=VALID_CLAUDE_PAYLOAD,
+        headers={"Authorization": "Bearer abc"},
+    )
+    conn = sqlite3.connect(tmp_path / "usage.db")
+    rows = usage_store.get_source_auth_status(conn)
+    claude = [r for r in rows if r["source_id"] == "claude"]
+    assert claude and claude[0]["auth_valid"] is True
+    assert claude[0]["last_auth_at"] is not None
+
+
+def test_push_claude_invalid_token_sets_auth_invalid(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    client.post(
+        "/api/push/claude",
+        json=VALID_CLAUDE_PAYLOAD,
+        headers={"Authorization": "Bearer wrong"},
+    )
+    conn = sqlite3.connect(tmp_path / "usage.db")
+    rows = usage_store.get_source_auth_status(conn)
+    claude = [r for r in rows if r["source_id"] == "claude"]
+    assert claude and claude[0]["auth_valid"] is False
