@@ -43,6 +43,32 @@ CREATE TABLE IF NOT EXISTS source (
 )
 """
 
+_CREATE_PROVIDER_SNAPSHOT = """
+CREATE TABLE IF NOT EXISTS provider_snapshot (
+    snapshot_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider          TEXT NOT NULL,
+    source_kind       TEXT NOT NULL,
+    recorded_at       TEXT NOT NULL,
+    user_id           TEXT,
+    membership_level  TEXT,
+    raw_json          TEXT NOT NULL
+)
+"""
+
+_CREATE_PROVIDER_ITEM = """
+CREATE TABLE IF NOT EXISTS provider_item (
+    item_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id       INTEGER NOT NULL REFERENCES provider_snapshot(snapshot_id),
+    item_kind         TEXT NOT NULL,
+    name              TEXT NOT NULL,
+    value_text        TEXT,
+    value_number      REAL,
+    unit              TEXT,
+    reset_time        TEXT,
+    extra_json        TEXT
+)
+"""
+
 
 def init_schema(conn: sqlite3.Connection) -> None:
     """Create tables (idempotent) and enable WAL.
@@ -55,6 +81,20 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(_CREATE_USAGE_POINT)
     conn.execute(_CREATE_SOURCE)
+    conn.execute(_CREATE_PROVIDER_SNAPSHOT)
+    conn.execute(_CREATE_PROVIDER_ITEM)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_provider_item_snapshot "
+        "ON provider_item(snapshot_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_provider_item_query "
+        "ON provider_item(item_kind, name)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snapshot_provider_time "
+        "ON provider_snapshot(provider, recorded_at)"
+    )
     cols = {row[1] for row in conn.execute("PRAGMA table_info(source)")}
     if "frozen_before" not in cols:
         conn.execute("ALTER TABLE source ADD COLUMN frozen_before TEXT")

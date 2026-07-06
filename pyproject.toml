@@ -17,6 +17,9 @@ ai-plan-insight = "ai_plan_insight.__main__:cli"
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+packages = ["ai_plan_insight"]
+
 [tool.setuptools.package-data]
 ai_plan_insight = ["*.html"]
 
