@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS source (
     source_id     TEXT PRIMARY KEY,
     label         TEXT,
     last_seen     TEXT,
-    frozen_before TEXT
+    frozen_before TEXT,
+    auth_valid    INTEGER NOT NULL DEFAULT 0,
+    last_auth_at  TEXT
 )
 """
 
@@ -56,6 +58,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(source)")}
     if "frozen_before" not in cols:
         conn.execute("ALTER TABLE source ADD COLUMN frozen_before TEXT")
+    if "auth_valid" not in cols:
+        conn.execute("ALTER TABLE source ADD COLUMN auth_valid INTEGER NOT NULL DEFAULT 0")
+    if "last_auth_at" not in cols:
+        conn.execute("ALTER TABLE source ADD COLUMN last_auth_at TEXT")
     usage_cols = {row[1] for row in conn.execute("PRAGMA table_info(usage_point)")}
     for col in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
         if col not in usage_cols:
@@ -245,3 +251,36 @@ def query_timeseries(
             )
         )
     return rows
+
+
+def update_source_auth(
+    conn: sqlite3.Connection, source_id: str, is_valid: bool, now: str
+) -> None:
+    """Record the latest push-auth outcome for a source.
+
+    Only `auth_valid` and `last_auth_at` are touched; the row must already
+    exist from `upsert_points` (which writes the source row on every report).
+    """
+    conn.execute(
+        "UPDATE source SET auth_valid = ?, last_auth_at = ? WHERE source_id = ?",
+        (1 if is_valid else 0, now, source_id),
+    )
+
+
+def get_source_auth_status(conn: sqlite3.Connection) -> list[dict]:
+    """Return all sources' authentication states for the admin endpoint."""
+    rows = conn.execute(
+        "SELECT source_id, label, last_seen, auth_valid, last_auth_at "
+        "FROM source ORDER BY source_id"
+    ).fetchall()
+    return [
+        {
+            "source_id": source_id,
+            "label": label,
+            "last_seen": last_seen,
+            "auth_valid": bool(auth_valid),
+            "last_auth_at": last_auth_at,
+        }
+        for source_id, label, last_seen, auth_valid, last_auth_at in rows
+    ]
+
