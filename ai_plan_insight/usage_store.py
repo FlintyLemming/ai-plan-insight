@@ -8,6 +8,7 @@ All dates are UTC+8 calendar days, matching the reporter agents.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -68,6 +69,37 @@ CREATE TABLE IF NOT EXISTS provider_item (
     extra_json        TEXT
 )
 """
+
+_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _parse_flexible_number(value: str) -> float | None:
+    """Extract a number from strings like '45.50', '¥ 1,234', or '$99.9'.
+
+    Returns None if no numeric token can be parsed. Never raises.
+    """
+    if not value:
+        return None
+    cleaned = value.strip()
+    # Remove common currency symbols, commas, spaces, and unit suffixes we see in balances
+    cleaned = re.sub(r"[\$¥£€,\s]", "", cleaned)
+    match = _NUMBER_RE.search(cleaned)
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _parse_limit_used(value: str) -> float | None:
+    """Try to parse limit `used` as a float; return None on failure."""
+    if not value:
+        return None
+    try:
+        return float(value.strip())
+    except ValueError:
+        return None
 
 
 def init_schema(conn: sqlite3.Connection) -> None:

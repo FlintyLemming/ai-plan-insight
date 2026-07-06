@@ -4,6 +4,21 @@ from datetime import datetime, timedelta
 from ai_plan_insight import usage_store
 from ai_plan_insight.usage_store import UTC8
 
+
+def test_parse_flexible_number_handles_currency_and_commas():
+    assert usage_store._parse_flexible_number("45.50") == 45.50
+    assert usage_store._parse_flexible_number("¥1,234.56") == 1234.56
+    assert usage_store._parse_flexible_number("$ 99") == 99.0
+    assert usage_store._parse_flexible_number("Pro") is None
+    assert usage_store._parse_flexible_number("") is None
+
+
+def test_parse_limit_used_parses_floats_and_survives_garbage():
+    assert usage_store._parse_limit_used("12.5") == 12.5
+    assert usage_store._parse_limit_used("100%") is None
+    assert usage_store._parse_limit_used("") is None
+
+
 TODAY = datetime.now(UTC8).date().isoformat()
 YESTERDAY = (datetime.now(UTC8).date() - timedelta(days=1)).isoformat()
 TWO_DAYS_AGO = (datetime.now(UTC8).date() - timedelta(days=2)).isoformat()
