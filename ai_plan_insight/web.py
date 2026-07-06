@@ -87,6 +87,16 @@ def _usage_conn() -> sqlite3.Connection:
     return sqlite3.connect(_usage_db_path)
 
 
+def _persist_usage_snapshot(usage: UsageResponse, source_kind: str) -> None:
+    """Best-effort snapshot persistence; never raises."""
+    try:
+        with closing(_usage_conn()) as conn:
+            usage_store.record_snapshot(conn, usage, source_kind=source_kind)  # type: ignore[arg-type]
+            conn.commit()
+    except Exception as e:
+        logger.warning("failed to persist usage snapshot: %s", e)
+
+
 def _verify_push_auth(request: Request, source_id: str) -> tuple[bool, str | None]:
     """Check the Bearer token against the configured global secret.
 
@@ -289,6 +299,7 @@ async def _fetch_all_usage() -> list[UsageResponse]:
         if isinstance(r, UsageResponse):
             _consecutive_failures[name] = 0
             _prev_results[name] = r
+            _persist_usage_snapshot(r, "fetch")
             valid.append(r)
         else:
             _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
