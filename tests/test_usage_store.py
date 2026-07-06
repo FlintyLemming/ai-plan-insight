@@ -140,6 +140,36 @@ def test_record_snapshot_survives_unparseable_values_and_empty_lists(tmp_path):
     conn.close()
 
 
+def test_init_schema_adds_provider_tables_to_old_db(tmp_path):
+    """A DB created before provider_snapshot exists gains the tables and indexes."""
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE source (source_id TEXT PRIMARY KEY, label TEXT, last_seen TEXT)"
+    )
+    conn.commit()
+    usage_store.init_schema(conn)
+
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "provider_snapshot" in tables
+    assert "provider_item" in tables
+
+    indexes = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'"
+    ).fetchall()}
+    assert "idx_provider_item_snapshot" in indexes
+    assert "idx_provider_item_query" in indexes
+    assert "idx_snapshot_provider_time" in indexes
+
+    # A write on the migrated table should work
+    usage = UsageResponse(provider="Kimi Coding Plan")
+    usage_store.record_snapshot(conn, usage, source_kind="fetch")
+    conn.commit()
+    conn.close()
+
+
 TODAY = datetime.now(UTC8).date().isoformat()
 YESTERDAY = (datetime.now(UTC8).date() - timedelta(days=1)).isoformat()
 TWO_DAYS_AGO = (datetime.now(UTC8).date() - timedelta(days=2)).isoformat()
