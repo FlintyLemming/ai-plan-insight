@@ -22,6 +22,8 @@ class Config(BaseModel):
     """Top-level configuration."""
     providers: dict[str, ProviderConfig]
     model_aliases: dict[str, list[str]] = Field(default_factory=dict)
+    push_auth_secret: str = ""
+    enforce_push_auth: bool = False
 
     @property
     def alias_lookup(self) -> dict[str, str]:
