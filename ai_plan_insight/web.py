@@ -1,11 +1,12 @@
 import asyncio
 import logging
+import secrets
 import sqlite3
 from contextlib import asynccontextmanager, closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
@@ -84,6 +85,32 @@ def _usage_conn() -> sqlite3.Connection:
     if _usage_db_path is None:
         raise RuntimeError("usage DB path not initialized")
     return sqlite3.connect(_usage_db_path)
+
+
+def _verify_push_auth(request: Request, source_id: str) -> tuple[bool, str | None]:
+    """Check the Bearer token against the configured global secret.
+
+    Returns (is_valid, reason). `reason` is one of "missing", "malformed",
+    or "invalid" when `is_valid` is False, and None when it is True.
+    """
+    config = load_config(_config_path)
+    secret = config.push_auth_secret
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return False, "missing"
+
+    parts = auth_header.strip().split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return False, "malformed"
+
+    token = parts[1].strip()
+    if not secret:
+        return False, "invalid"
+
+    if secrets.compare_digest(token, secret):
+        return True, None
+    return False, "invalid"
 
 # Providers that have no fetch implementation and are fed exclusively via the
 # /api/push/* endpoints. They are allowed as keys in config.json (to carry an

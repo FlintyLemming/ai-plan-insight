@@ -1,3 +1,10 @@
+import sqlite3
+
+import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+
+from ai_plan_insight import usage_store, web
 from ai_plan_insight.config import Config
 
 
@@ -11,10 +18,6 @@ def test_config_push_auth_parses_secret_and_enforce():
     cfg = Config(providers={}, push_auth_secret="abc", enforce_push_auth=True)
     assert cfg.push_auth_secret == "abc"
     assert cfg.enforce_push_auth is True
-
-
-import sqlite3
-from ai_plan_insight import usage_store
 
 
 def test_source_auth_columns_added_on_init(tmp_path):
@@ -54,3 +57,54 @@ def test_update_and_get_source_auth_status(tmp_path):
         "auth_valid": True,
         "last_auth_at": "2026-07-06T12:00:00+08:00",
     }
+
+
+def _cfg(secret="", enforce=False):
+    return Config(providers={}, push_auth_secret=secret, enforce_push_auth=enforce)
+
+
+@pytest.fixture
+def auth_client(monkeypatch):
+    monkeypatch.setattr(web, "load_config", lambda _=None: _cfg(secret="abc"))
+    app = FastAPI()
+
+    def _verify(request: Request):
+        is_valid, reason = web._verify_push_auth(request, "src")
+        return {"is_valid": is_valid, "reason": reason}
+
+    app.post("/test")(_verify)
+    return TestClient(app)
+
+
+def test_verify_auth_valid_token(auth_client):
+    resp = auth_client.post("/test", headers={"Authorization": "Bearer abc"})
+    assert resp.json() == {"is_valid": True, "reason": None}
+
+
+def test_verify_auth_missing_header(auth_client):
+    resp = auth_client.post("/test")
+    assert resp.json() == {"is_valid": False, "reason": "missing"}
+
+
+def test_verify_auth_malformed_header(auth_client):
+    resp = auth_client.post("/test", headers={"Authorization": "Basic abc"})
+    assert resp.json() == {"is_valid": False, "reason": "malformed"}
+
+
+def test_verify_auth_invalid_token(auth_client):
+    resp = auth_client.post("/test", headers={"Authorization": "Bearer wrong"})
+    assert resp.json() == {"is_valid": False, "reason": "invalid"}
+
+
+def test_verify_auth_no_secret_config():
+    web.load_config = lambda _=None: _cfg(secret="")
+    app = FastAPI()
+
+    def _verify(request: Request):
+        is_valid, reason = web._verify_push_auth(request, "src")
+        return {"is_valid": is_valid, "reason": reason}
+
+    app.post("/test")(_verify)
+    client = TestClient(app)
+    resp = client.post("/test", headers={"Authorization": "Bearer abc"})
+    assert resp.json() == {"is_valid": False, "reason": "invalid"}
