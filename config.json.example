@@ -52,5 +52,7 @@
     "GLM 5.2": ["glm-5.2", "glm5.2"],
     "GPT 5.2": ["gpt-5.2"],
     "Claude Sonnet 4.5": ["claude-sonnet-4-5", "claude-sonnet-4-5-20250929"]
-  }
+  },
+  "push_auth_secret": "ai-plan-insight-push-token-2026",
+  "enforce_push_auth": false
 }
