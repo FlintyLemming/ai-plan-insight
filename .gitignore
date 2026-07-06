@@ -9,3 +9,4 @@ __pycache__/
 compose.yaml
 config.json
 .env
+.worktrees/
