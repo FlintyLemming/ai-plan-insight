@@ -13,7 +13,9 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Literal
+
+from ai_plan_insight.api_schemas import UsageResponse
 
 UTC8 = timezone(timedelta(hours=8))
 
@@ -100,6 +102,118 @@ def _parse_limit_used(value: str) -> float | None:
         return float(value.strip())
     except ValueError:
         return None
+
+
+def record_snapshot(
+    conn: sqlite3.Connection,
+    usage: UsageResponse,
+    source_kind: Literal["fetch", "push"],
+    now: str | None = None,
+) -> int:
+    """Persist one UsageResponse as a snapshot plus its item rows.
+
+    Returns the new snapshot_id. The caller is responsible for commit.
+    Value-number parsing failures are silently ignored; the snapshot still
+    writes with value_text preserved.
+    """
+    recorded_at = now or datetime.now().astimezone().isoformat()
+    cur = conn.execute(
+        "INSERT INTO provider_snapshot "
+        "(provider, source_kind, recorded_at, user_id, membership_level, raw_json) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            usage.provider,
+            source_kind,
+            recorded_at,
+            usage.user_id,
+            usage.membership_level,
+            usage.model_dump_json(),
+        ),
+    )
+    snapshot_id = cur.lastrowid
+
+    items: list[tuple] = []
+
+    for lim in usage.limits:
+        items.append(
+            (
+                snapshot_id,
+                "limit",
+                lim.time_unit,
+                lim.used,
+                _parse_limit_used(lim.used),
+                lim.time_unit,
+                lim.reset_time,
+                lim.model_dump_json() if lim else None,
+            )
+        )
+
+    for key, value in usage.balances.items():
+        items.append(
+            (
+                snapshot_id,
+                "balance",
+                key,
+                value,
+                _parse_flexible_number(value),
+                None,
+                None,
+                None,
+            )
+        )
+
+    for tu in usage.token_usage:
+        items.append(
+            (
+                snapshot_id,
+                "token_usage",
+                tu.period,
+                str(tu.total_tokens),
+                float(tu.total_tokens),
+                "tokens",
+                None,
+                tu.model_dump_json(),
+            )
+        )
+
+    for ms in usage.model_stats:
+        items.append(
+            (
+                snapshot_id,
+                "model_stat",
+                ms.model,
+                str(ms.total_tokens),
+                float(ms.total_tokens),
+                "tokens",
+                None,
+                ms.model_dump_json(),
+            )
+        )
+
+    if usage.history_usage is not None:
+        hu = usage.history_usage
+        items.append(
+            (
+                snapshot_id,
+                "history_usage",
+                "history_usage",
+                str(hu.total_tokens),
+                float(hu.total_tokens),
+                f"{hu.period}/{hu.granularity}",
+                None,
+                hu.model_dump_json(),
+            )
+        )
+
+    if items:
+        conn.executemany(
+            "INSERT INTO provider_item "
+            "(snapshot_id, item_kind, name, value_text, value_number, unit, reset_time, extra_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            items,
+        )
+
+    return snapshot_id
 
 
 def init_schema(conn: sqlite3.Connection) -> None:

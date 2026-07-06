@@ -19,6 +19,80 @@ def test_parse_limit_used_parses_floats_and_survives_garbage():
     assert usage_store._parse_limit_used("") is None
 
 
+from ai_plan_insight.api_schemas import (
+    UsageResponse,
+    LimitResponse,
+    TokenUsageResponse,
+    ModelStatResponse,
+    HistoryUsagePeriodResponse,
+    HistoryModelUsageResponse,
+)
+
+
+def test_record_snapshot_persists_items(tmp_path):
+    conn = _connect(tmp_path)
+    usage = UsageResponse(
+        provider="Kimi Coding Plan",
+        user_id="u-1",
+        membership_level="Pro",
+        limits=[
+            LimitResponse(
+                duration=1,
+                time_unit="小时",
+                limit="100",
+                used="12.5",
+                remaining="87.5",
+                reset_time="2026-07-07T00:00:00+08:00",
+            )
+        ],
+        balances={"余额": "¥45.50"},
+        token_usage=[TokenUsageResponse(period="2026-07", total_tokens=1000, total_calls=5)],
+        model_stats=[ModelStatResponse(model="kimi-k2", total_tokens=500, requests=3)],
+        history_usage=HistoryUsagePeriodResponse(
+            period="30d",
+            granularity="1d",
+            x_time=["2026-07-01"],
+            tokens_usage=[100],
+            model_call_count=[1],
+            total_tokens=100,
+            total_calls=1,
+            models=[
+                HistoryModelUsageResponse(
+                    model_name="kimi-k2", total_tokens=100, total_calls=1, tokens_usage=[100]
+                )
+            ],
+        ),
+    )
+    snapshot_id = usage_store.record_snapshot(conn, usage, source_kind="fetch")
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT provider, source_kind, user_id, membership_level, raw_json "
+        "FROM provider_snapshot WHERE snapshot_id = ?",
+        (snapshot_id,),
+    ).fetchone()
+    assert row[0] == "Kimi Coding Plan"
+    assert row[1] == "fetch"
+    assert row[2] == "u-1"
+    assert row[3] == "Pro"
+    assert '"provider":"Kimi Coding Plan"' in row[4]
+
+    items = conn.execute(
+        "SELECT item_kind, name, value_text, value_number, unit, reset_time "
+        "FROM provider_item WHERE snapshot_id = ? ORDER BY item_id",
+        (snapshot_id,),
+    ).fetchall()
+    assert len(items) == 5
+    assert items[0] == ("limit", "小时", "12.5", 12.5, "小时", "2026-07-07T00:00:00+08:00")
+    assert items[1] == ("balance", "余额", "¥45.50", 45.5, None, None)
+    assert items[2] == ("token_usage", "2026-07", "1000", 1000.0, "tokens", None)
+    assert items[3] == ("model_stat", "kimi-k2", "500", 500.0, "tokens", None)
+    assert items[4][0] == "history_usage"
+    assert items[4][3] == 100.0
+    assert items[4][4] == "30d/1d"
+    conn.close()
+
+
 TODAY = datetime.now(UTC8).date().isoformat()
 YESTERDAY = (datetime.now(UTC8).date() - timedelta(days=1)).isoformat()
 TWO_DAYS_AGO = (datetime.now(UTC8).date() - timedelta(days=2)).isoformat()
