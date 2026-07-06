@@ -263,3 +263,32 @@ def test_report_invalid_token_sets_auth_invalid(tmp_path, monkeypatch):
     conn = sqlite3.connect(tmp_path / "usage.db")
     rows = usage_store.get_source_auth_status(conn)
     assert rows[0]["auth_valid"] is False
+
+
+def test_admin_sources_lists_auth_status(tmp_path, monkeypatch):
+    db = tmp_path / "usage.db"
+    monkeypatch.setattr(web, "_usage_db_path", db)
+    usage_store.init_db(db)
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    conn = sqlite3.connect(db)
+    usage_store.upsert_points(
+        conn,
+        source_id="my-agent",
+        source_label="My Agent",
+        points=[{"date": "2026-07-06", "model_id": "m1", "input_tokens": 1, "output_tokens": 1}],
+        reported_at="2026-07-06",
+        now="2026-07-06T12:00:00+08:00",
+    )
+    usage_store.update_source_auth(conn, "my-agent", True, "2026-07-06T12:00:00+08:00")
+    conn.commit()
+
+    client = TestClient(web.app)
+    resp = client.get("/api/admin/sources")
+    assert resp.status_code == 200
+    assert resp.json() == [{
+        "source_id": "my-agent",
+        "label": "My Agent",
+        "last_seen": "2026-07-06T12:00:00+08:00",
+        "auth_valid": True,
+        "last_auth_at": "2026-07-06T12:00:00+08:00",
+    }]

@@ -526,6 +526,17 @@ async def report_usage(req: UsageReportRequest, request: Request):
     return {"ok": True, "upserted": written, "dropped": dropped}
 
 
+@app.get("/api/admin/sources")
+async def get_admin_sources():
+    """Return the authentication status of every source that has reported."""
+    try:
+        with closing(_usage_conn()) as conn:
+            return usage_store.get_source_auth_status(conn)
+    except Exception as e:
+        logger.error("admin sources failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesResponse:
     """Turn alias-resolved store rows into the chart payload.
 
