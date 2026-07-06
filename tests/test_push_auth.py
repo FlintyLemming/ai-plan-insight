@@ -187,3 +187,79 @@ def test_push_claude_invalid_token_sets_auth_invalid(tmp_path, monkeypatch):
     rows = usage_store.get_source_auth_status(conn)
     claude = [r for r in rows if r["source_id"] == "claude"]
     assert claude and claude[0]["auth_valid"] is False
+
+
+TODAY = datetime.now(usage_store.UTC8).date().isoformat()
+
+
+def _setup_report(tmp_path, monkeypatch, secret="abc", enforce=False):
+    db = tmp_path / "usage.db"
+    monkeypatch.setattr(web, "_usage_db_path", db)
+    usage_store.init_db(db)
+    monkeypatch.setattr(
+        web, "load_config", lambda _=None: Config(
+            providers={}, push_auth_secret=secret, enforce_push_auth=enforce
+        )
+    )
+
+
+def test_report_soft_no_token_still_saves(tmp_path, monkeypatch):
+    _setup_report(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "macbook-flinty",
+        "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["upserted"] == 1
+
+
+def test_report_soft_invalid_token_still_saves(tmp_path, monkeypatch):
+    _setup_report(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "macbook-flinty",
+        "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+    }, headers={"Authorization": "Bearer wrong"})
+    assert resp.status_code == 200
+
+
+def test_report_hard_invalid_token_returns_401(tmp_path, monkeypatch):
+    _setup_report(tmp_path, monkeypatch, secret="abc", enforce=True)
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "macbook-flinty",
+        "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+    }, headers={"Authorization": "Bearer wrong"})
+    assert resp.status_code == 401
+    conn = sqlite3.connect(tmp_path / "usage.db")
+    rows = usage_store.query_timeseries(conn, 7, {})
+    assert len(rows) == 0
+
+
+def test_report_valid_token_sets_auth_valid(tmp_path, monkeypatch):
+    _setup_report(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "macbook-flinty",
+        "source_label": "MacBook Pro",
+        "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+    }, headers={"Authorization": "Bearer abc"})
+    assert resp.status_code == 200
+    conn = sqlite3.connect(tmp_path / "usage.db")
+    rows = usage_store.get_source_auth_status(conn)
+    assert rows[0]["source_id"] == "macbook-flinty"
+    assert rows[0]["auth_valid"] is True
+
+
+def test_report_invalid_token_sets_auth_invalid(tmp_path, monkeypatch):
+    _setup_report(tmp_path, monkeypatch, secret="abc", enforce=False)
+    client = TestClient(web.app)
+    resp = client.post("/api/usage/report", json={
+        "source_id": "macbook-flinty",
+        "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+    }, headers={"Authorization": "Bearer wrong"})
+    assert resp.status_code == 200
+    conn = sqlite3.connect(tmp_path / "usage.db")
+    rows = usage_store.get_source_auth_status(conn)
+    assert rows[0]["auth_valid"] is False

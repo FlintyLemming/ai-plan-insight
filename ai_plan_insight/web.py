@@ -492,9 +492,17 @@ async def push_claude(req: ClaudePushRequest, request: Request):
 
 
 @app.post("/api/usage/report")
-async def report_usage(req: UsageReportRequest):
+async def report_usage(req: UsageReportRequest, request: Request):
     if not req.source_id:
         raise HTTPException(status_code=400, detail="source_id is required")
+
+    config = load_config(_config_path)
+    is_valid, reason = _verify_push_auth(request, req.source_id)
+    if not is_valid:
+        logger.warning("push auth failed for %s: %s", req.source_id, reason)
+    if config.enforce_push_auth and not is_valid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     try:
         with closing(_usage_conn()) as conn:
             written, dropped = usage_store.upsert_points(
@@ -503,6 +511,9 @@ async def report_usage(req: UsageReportRequest):
                 req.source_label,
                 [p.model_dump() for p in req.points],
                 reported_at=req.reported_at,
+            )
+            usage_store.update_source_auth(
+                conn, req.source_id, is_valid, datetime.now().astimezone().isoformat()
             )
             conn.commit()
     except Exception as e:
