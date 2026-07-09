@@ -298,7 +298,7 @@
   #usage-chart-container { position: relative; width: 100%; }
   .usage-axis { stroke: #334155; stroke-width: 1; }
   .usage-grid { stroke: #273449; stroke-width: 1; }
-  .usage-axis-text { fill: #64748b; font-size: 11px; }
+  .usage-axis-text { fill: #64748b; font-size: 18px; }
   .usage-legend {
     display: flex;
     flex-wrap: wrap;
@@ -375,62 +375,44 @@
     background: #1e293b;
     border: 1px solid #334155;
     border-radius: 12px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    touch-action: pan-x;
+    overflow: hidden;
     position: relative;
   }
-  .usage-table-wrap::-webkit-scrollbar { height: 6px; }
-  .usage-table-wrap::-webkit-scrollbar-track { background: transparent; }
-  .usage-table-wrap::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
   .usage-table {
     width: 100%;
-    min-width: 520px;
     border-collapse: collapse;
-    font-size: 0.8rem;
+    font-size: 0.86rem;
   }
   .usage-table th, .usage-table td {
-    padding: 0.5rem 0.6rem;
+    padding: 0.6rem 0.9rem;
     text-align: right;
     border-bottom: 1px solid #334155;
     white-space: nowrap;
   }
+  /* Mobile: hide the per-token breakdown columns, keep only model + total */
+  .usage-table th.col-detail, .usage-table td.col-detail { display: none; }
   .usage-table th {
     color: #94a3b8;
     font-weight: 600;
     background: #0f172a;
     text-align: right;
-    position: -webkit-sticky;
-    position: sticky;
-    top: 0;
-  }
-  .usage-table th.col-model, .usage-table td.col-model {
-    text-align: left;
-    position: -webkit-sticky;
-    position: sticky;
-    left: 0;
-    background: #1e293b;
-    z-index: 1;
   }
   .usage-table th.col-model {
+    text-align: left;
     background: #0f172a;
-    z-index: 2;
   }
   .usage-table tbody tr:last-child td { border-bottom: none; }
   .usage-table tbody tr:hover { background: #243349; }
-  .usage-table tbody tr:hover td.col-model { background: #243349; }
   .usage-table td.num, .usage-table th.num { font-variant-numeric: tabular-nums; }
   .usage-table-model-cell {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    max-width: 10rem;
+    max-width: 16rem;
   }
   .usage-table-swatch {
-    width: 0.6rem;
-    height: 0.6rem;
+    width: 0.65rem;
+    height: 0.65rem;
     border-radius: 2px;
     flex: 0 0 auto;
   }
@@ -441,29 +423,9 @@
     color: #e2e8f0;
   }
   @media (min-width: 640px) {
-    .usage-table {
-      font-size: 0.86rem;
-      min-width: 0;
-    }
-    .usage-table th, .usage-table td {
-      padding: 0.6rem 0.9rem;
-    }
-    .usage-table th.col-model, .usage-table td.col-model {
-      position: static;
-      background: transparent;
-    }
-    .usage-table th.col-model {
-      background: #0f172a;
-    }
-    .usage-table tbody tr:hover td.col-model { background: transparent; }
-    .usage-table-model-cell {
-      max-width: 18rem;
-      gap: 0.45rem;
-    }
-    .usage-table-swatch {
-      width: 0.65rem;
-      height: 0.65rem;
-    }
+    .usage-axis-text { font-size: 11px; }
+    /* Desktop: show all columns including the per-token breakdown */
+    .usage-table th.col-detail, .usage-table td.col-detail { display: table-cell; }
   }
   .usage-table-empty {
     color: #64748b;
@@ -634,6 +596,7 @@ applyUsageRange(usageRange);
 const USAGE_COLORS = ['#38bdf8', '#f59e0b', '#34d399', '#f472b6', '#a78bfa', '#fbbf24', '#22d3ee', '#fb7185'];
 const USAGE_OTHER_COLOR = '#64748b';
 let lastUsageModels = [];  // [{label,color,...}] from the most recent fetch
+let lastUsageData = null;  // raw payload from the most recent fetch, for re-render on resize
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => (
@@ -651,6 +614,7 @@ function renderUsageChart(data) {
   const container = document.getElementById('usage-chart-container');
   const tableContainer = document.getElementById('usage-table-container');
   const totalEl = document.getElementById('range-total');
+  if (data) lastUsageData = data;
   tableAllModels = (data && Array.isArray(data.all_models)) ? data.all_models : [];
   tableCurrentPage = 1;
   if (!data || !data.days || data.days.length === 0) {
@@ -671,7 +635,11 @@ function renderUsageChart(data) {
   const colorByLabel = {};
   modelSummary.forEach(m => { colorByLabel[m.label] = m.color; });
 
-  const W = 1000, H = 400, padL = 86, padR = 16, padT = 16, padB = 44;
+  const W = 1000, H = 400;
+  // On mobile the Y-axis labels are scaled up (font-size 18px in SVG units),
+  // so widen the left padding to keep "1.25 M" from colliding with the axis.
+  const isMobile = window.innerWidth < 640;
+  const padL = isMobile ? 132 : 86, padR = 16, padT = 16, padB = 44;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const baseY = H - padB;
@@ -861,12 +829,12 @@ function renderUsageTable() {
         <span class="usage-table-swatch" style="background:${color}"></span>
         <span class="usage-table-label">${escapeHtml(m.label)}</span>
       </span></td>
-      <td class="num">${formatTokens(m.input_tokens || 0)}</td>
-      <td class="num">${formatTokens(m.output_tokens || 0)}</td>
-      <td class="num">${formatTokens(m.cache_read_tokens || 0)}</td>
-      <td class="num">${formatTokens(m.cache_write_tokens || 0)}</td>
-      <td class="num">${formatTokens(m.reasoning_tokens || 0)}</td>
-      <td class="num">${formatTokens(m.grand_total || 0)}</td>
+      <td class="num col-detail">${formatTokens(m.input_tokens || 0)}</td>
+      <td class="num col-detail">${formatTokens(m.output_tokens || 0)}</td>
+      <td class="num col-detail">${formatTokens(m.cache_read_tokens || 0)}</td>
+      <td class="num col-detail">${formatTokens(m.cache_write_tokens || 0)}</td>
+      <td class="num col-detail">${formatTokens(m.reasoning_tokens || 0)}</td>
+      <td class="num col-total">${formatTokens(m.grand_total || 0)}</td>
     </tr>`;
   }).join('');
 
@@ -892,12 +860,12 @@ function renderUsageTable() {
     <thead>
       <tr>
         <th class="col-model">模型名</th>
-        <th class="num">输入 token</th>
-        <th class="num">输出 token</th>
-        <th class="num">缓存读</th>
-        <th class="num">缓存写</th>
-        <th class="num">推理</th>
-        <th class="num">总计</th>
+        <th class="num col-detail">输入 token</th>
+        <th class="num col-detail">输出 token</th>
+        <th class="num col-detail">缓存读</th>
+        <th class="num col-detail">缓存写</th>
+        <th class="num col-detail">推理</th>
+        <th class="num col-total">总计</th>
       </tr>
     </thead>
     <tbody>${rowsHtml}</tbody>
@@ -944,6 +912,16 @@ async function refreshUsageChart() {
     if (container) container.innerHTML = `<div class="empty-usage">加载失败：${escapeHtml(e.message)}</div>`;
   }
 }
+
+// Re-render the chart when the viewport crosses the mobile/desktop boundary,
+// so the Y-axis padding and label sizes track orientation/window changes.
+let usageResizeTimer = null;
+window.addEventListener('resize', () => {
+  if (usageResizeTimer) clearTimeout(usageResizeTimer);
+  usageResizeTimer = setTimeout(() => {
+    if (lastUsageData && activeTab === 'usage') renderUsageChart(lastUsageData);
+  }, 200);
+});
 
 function formatTimeWindow(l) {
   const key = l.time_unit.toLowerCase();

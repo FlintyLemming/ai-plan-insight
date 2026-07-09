@@ -10,3 +10,9 @@ compose.yaml
 config.json
 .env
 .worktrees/
+# Test run artifacts
+tests/usage.db
+tests/usage.db-shm
+tests/usage.db-wal
+tests/test_data/
+tests/screenshots/

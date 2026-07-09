@@ -88,6 +88,16 @@ def _usage_conn() -> sqlite3.Connection:
     return sqlite3.connect(_usage_db_path)
 
 
+def _persist_usage_snapshot(usage: UsageResponse, source_kind: str) -> None:
+    """Best-effort snapshot persistence; never raises."""
+    try:
+        with closing(_usage_conn()) as conn:
+            usage_store.record_snapshot(conn, usage, source_kind=source_kind)  # type: ignore[arg-type]
+            conn.commit()
+    except Exception as e:
+        logger.warning("failed to persist usage snapshot: %s", e)
+
+
 def _verify_push_auth(request: Request, source_id: str) -> tuple[bool, str | None]:
     """Check the Bearer token against the configured global secret.
 
@@ -291,6 +301,7 @@ async def _fetch_all_usage() -> list[UsageResponse]:
         if isinstance(r, UsageResponse):
             _consecutive_failures[name] = 0
             _prev_results[name] = r
+            _persist_usage_snapshot(r, "fetch")
             valid.append(r)
         else:
             _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
@@ -408,6 +419,7 @@ async def push_antigravity(req: AntigravityPushRequest, request: Request):
             ),
         ]
     )
+    _persist_usage_snapshot(_pushed_results["antigravity"], "push")
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["antigravity"] = datetime.now().astimezone()
     return {"status": "ok"}
@@ -442,6 +454,7 @@ async def push_cursor(req: CursorPushRequest, request: Request):
         ],
         balances={"到期时间": end_display},
     )
+    _persist_usage_snapshot(_pushed_results["cursor"], "push")
     _last_updated = dt.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["cursor"] = dt.now().astimezone()
     return {"status": "ok"}
@@ -458,6 +471,7 @@ async def push_mimo(req: MimoPushRequest, request: Request):
         limits=req.limits,
         balances=req.balances,
     )
+    _persist_usage_snapshot(_pushed_results["mimo_token_plan"], "push")
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["mimo_token_plan"] = datetime.now().astimezone()
     return {"status": "ok"}
@@ -488,6 +502,7 @@ async def push_claude(req: ClaudePushRequest, request: Request):
             ),
         ],
     )
+    _persist_usage_snapshot(_pushed_results["claude"], "push")
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["claude"] = datetime.now().astimezone()
     return {"status": "ok"}

@@ -1,6 +1,29 @@
-import pytest
+import sqlite3
+from pathlib import Path
 
+import pytest
 from ai_plan_insight.api_schemas import UsagePoint, UsageReportRequest
+
+
+def _snapshot_rows(db: Path) -> list[tuple]:
+    """Return all provider_snapshot rows from the temp DB."""
+    conn = sqlite3.connect(db)
+    try:
+        return conn.execute(
+            "SELECT provider, source_kind, user_id, membership_level FROM provider_snapshot"
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def _item_rows(db: Path) -> list[tuple]:
+    conn = sqlite3.connect(db)
+    try:
+        return conn.execute(
+            "SELECT item_kind, name, value_text, value_number FROM provider_item"
+        ).fetchall()
+    finally:
+        conn.close()
 
 
 def test_usage_point_accepts_valid_date_and_nonnegative_tokens():
@@ -297,3 +320,72 @@ def test_report_legacy_payload_without_cache_still_accepted(usage_db, monkeypatc
     m = body["days"][0]["models"][0]
     assert m["cache_read_tokens"] == 0
     assert m["total"] == 150
+
+
+def test_api_usage_persists_fetch_snapshot(usage_db, monkeypatch):
+    from ai_plan_insight.api_schemas import UsageResponse, LimitResponse
+    from ai_plan_insight.config import Config
+
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+
+    fake_result = [
+        UsageResponse(
+            provider="Kimi Coding Plan",
+            user_id="u-1",
+            membership_level="Pro",
+            limits=[
+                LimitResponse(
+                    duration=1,
+                    time_unit="小时",
+                    limit="100",
+                    used="10",
+                    remaining="90",
+                )
+            ],
+            balances={"余额": "100.00"},
+        )
+    ]
+
+    def fake_fetch():
+        # Simulate what _fetch_all_usage does after a successful fetch.
+        web._persist_usage_snapshot(fake_result[0], "fetch")
+        return fake_result
+
+    monkeypatch.setattr(web, "_fetch_all_usage", fake_fetch)
+    monkeypatch.setattr(web, "_cached_results", fake_fetch())
+
+    client = TestClient(web.app)
+    resp = client.get("/api/usage")
+    assert resp.status_code == 200
+
+    rows = _snapshot_rows(usage_db)
+    assert len(rows) == 1
+    assert rows[0] == ("Kimi Coding Plan", "fetch", "u-1", "Pro")
+
+    items = _item_rows(usage_db)
+    assert ("limit", "小时", "10", 10.0) in items
+    assert ("balance", "余额", "100.00", 100.0) in items
+
+
+def test_push_claude_persists_push_snapshot(usage_db, monkeypatch):
+    from ai_plan_insight.config import Config
+
+    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
+    monkeypatch.setattr(web, "_verify_push_auth", lambda _req, _sid: (True, None))
+    web._pushed_results.clear()
+    web._pushed_at.clear()
+
+    client = TestClient(web.app)
+    resp = client.post("/api/push/claude", json={
+        "five_hour": {"utilization": 25.0, "resets_at": "2026-07-06T18:00:00+08:00"},
+        "seven_day": {"utilization": 10.0, "resets_at": "2026-07-13T00:00:00+08:00"},
+    })
+    assert resp.status_code == 200
+
+    rows = _snapshot_rows(usage_db)
+    assert len(rows) >= 1
+    assert any(row[1] == "push" and row[0] == "Claude 订阅" for row in rows)
+
+    items = _item_rows(usage_db)
+    assert any(i == ("limit", "小时", "25", 25.0) for i in items)
+    assert any(i == ("limit", "天", "10", 10.0) for i in items)
