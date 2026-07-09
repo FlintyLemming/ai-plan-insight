@@ -104,7 +104,8 @@ def test_expired_grok_push_is_not_returned(tmp_path, monkeypatch):
     _reset_push_state(tmp_path, monkeypatch)
     client = TestClient(web.app)
 
-    client.post("/api/push/grok", json=VALID_PAYLOAD)
+    push_resp = client.post("/api/push/grok", json=VALID_PAYLOAD)
+    assert push_resp.status_code == 200
     web._pushed_at["grok"] = datetime.now().astimezone() - timedelta(minutes=31)
 
     resp = client.get("/api/usage")
