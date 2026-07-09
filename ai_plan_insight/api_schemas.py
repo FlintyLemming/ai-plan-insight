@@ -95,6 +95,16 @@ class ClaudePushRequest(BaseModel):
     five_hour: ClaudeWindowPush
 
 
+class GrokWindowPush(BaseModel):
+    utilization: float
+    resets_at: str
+
+
+class GrokPushRequest(BaseModel):
+    weekly: GrokWindowPush
+    plan: str | None = None
+
+
 from pydantic import Field
 
 
