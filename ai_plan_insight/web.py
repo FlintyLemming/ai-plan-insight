@@ -39,6 +39,7 @@ from .api_schemas import (
     CursorPushRequest,
     MimoPushRequest,
     ClaudePushRequest,
+    GrokPushRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,7 +150,7 @@ def _handle_push_auth(request: Request, source_id: str) -> None:
 # Providers that have no fetch implementation and are fed exclusively via the
 # /api/push/* endpoints. They are allowed as keys in config.json (to carry an
 # `order` value) but must be skipped by the fetch loop.
-_PUSH_ONLY_PROVIDERS = {"cursor", "claude", "mimo_token_plan"}
+_PUSH_ONLY_PROVIDERS = {"cursor", "claude", "mimo_token_plan", "grok"}
 
 # provider config key -> display name. Built from the same source of truth as
 # `_build_provider` so the two never drift apart. Push-only entries use the
@@ -168,6 +169,7 @@ _PROVIDER_DISPLAY_NAMES = {
     "volcengine_ark": "火山方舟 Coding Plan",
     "cursor": "Cursor",
     "claude": "Claude 订阅",
+    "grok": "Grok 订阅",
     "mimo_token_plan": "小米 MiMo Token Plan",
 }
 
@@ -488,6 +490,30 @@ async def push_claude(req: ClaudePushRequest, request: Request):
     )
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["claude"] = datetime.now().astimezone()
+    return {"status": "ok"}
+
+
+@app.post("/api/push/grok")
+async def push_grok(req: GrokPushRequest, request: Request):
+    _handle_push_auth(request, "grok")
+    global _last_updated, _pushed_results, _pushed_at
+    plan = (req.plan or "").strip() or None
+    _pushed_results["grok"] = UsageResponse(
+        provider="Grok 订阅",
+        membership_level=plan,
+        limits=[
+            LimitResponse(
+                duration=7,
+                time_unit="天",
+                limit="100",
+                used=str(int(req.weekly.utilization)),
+                remaining=str(int(100 - req.weekly.utilization)),
+                reset_time=req.weekly.resets_at,
+            ),
+        ],
+    )
+    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["grok"] = datetime.now().astimezone()
     return {"status": "ok"}
 
 
