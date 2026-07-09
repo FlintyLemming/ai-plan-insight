@@ -497,11 +497,30 @@ async def push_claude(req: ClaudePushRequest, request: Request):
 async def push_grok(req: GrokPushRequest, request: Request):
     _handle_push_auth(request, "grok")
     global _last_updated, _pushed_results, _pushed_at
+    if req.weekly is None and req.monthly is None:
+        raise HTTPException(
+            status_code=422,
+            detail="at least one of weekly or monthly is required",
+        )
     plan = (req.plan or "").strip() or None
-    _pushed_results["grok"] = UsageResponse(
-        provider="Grok 订阅",
-        membership_level=plan,
-        limits=[
+    limits: list[LimitResponse] = []
+    # Monthly first (matches pi-grok-cli Usage display order).
+    if req.monthly is not None:
+        used = int(req.monthly.used)
+        limit = int(req.monthly.limit)
+        remaining = max(limit - used, 0)
+        limits.append(
+            LimitResponse(
+                duration=1,
+                time_unit="月",
+                limit=str(limit),
+                used=str(used),
+                remaining=str(remaining),
+                reset_time=req.monthly.resets_at,
+            )
+        )
+    if req.weekly is not None:
+        limits.append(
             LimitResponse(
                 duration=7,
                 time_unit="天",
@@ -509,8 +528,12 @@ async def push_grok(req: GrokPushRequest, request: Request):
                 used=str(int(req.weekly.utilization)),
                 remaining=str(int(100 - req.weekly.utilization)),
                 reset_time=req.weekly.resets_at,
-            ),
-        ],
+            )
+        )
+    _pushed_results["grok"] = UsageResponse(
+        provider="Grok 订阅",
+        membership_level=plan,
+        limits=limits,
     )
     _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     _pushed_at["grok"] = datetime.now().astimezone()

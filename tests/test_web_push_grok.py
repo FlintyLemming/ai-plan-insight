@@ -10,6 +10,7 @@ from ai_plan_insight.config import Config
 
 
 VALID_PAYLOAD = {
+    "monthly": {"used": 448, "limit": 15000, "resets_at": "2026-08-01T00:00:00+00:00"},
     "weekly": {"utilization": 45.2, "resets_at": "2026-07-10T04:01:09Z"},
     "plan": "SuperGrok",
 }
@@ -52,15 +53,24 @@ def test_usage_returns_grok_limit_after_push(tmp_path, monkeypatch):
     card = providers[0]
     assert card["membership_level"] == "SuperGrok"
     limits = card["limits"]
-    assert len(limits) == 1
-    limit = limits[0]
-    assert limit["duration"] == 7
-    assert limit["time_unit"] == "天"
-    assert limit["limit"] == "100"
-    assert limit["used"] == "45"  # int(45.2)
-    assert limit["remaining"] == "54"  # int(100 - 45.2)
-    assert limit["reset_time"] == "2026-07-10T04:01:09Z"
-    assert limit["limit_type"] == ""
+    assert len(limits) == 2
+
+    monthly = limits[0]
+    assert monthly["duration"] == 1
+    assert monthly["time_unit"] == "月"
+    assert monthly["limit"] == "15000"
+    assert monthly["used"] == "448"
+    assert monthly["remaining"] == "14552"
+    assert monthly["reset_time"] == "2026-08-01T00:00:00+00:00"
+
+    weekly = limits[1]
+    assert weekly["duration"] == 7
+    assert weekly["time_unit"] == "天"
+    assert weekly["limit"] == "100"
+    assert weekly["used"] == "45"  # int(45.2)
+    assert weekly["remaining"] == "54"  # int(100 - 45.2)
+    assert weekly["reset_time"] == "2026-07-10T04:01:09Z"
+    assert weekly["limit_type"] == ""
 
 
 def test_push_grok_without_plan_has_null_membership(tmp_path, monkeypatch):
@@ -92,12 +102,50 @@ def test_push_grok_blank_plan_treated_as_missing(tmp_path, monkeypatch):
     assert providers[0]["membership_level"] is None
 
 
-def test_push_grok_missing_weekly_returns_422(tmp_path, monkeypatch):
+def test_push_grok_missing_both_windows_returns_422(tmp_path, monkeypatch):
     _reset_push_state(tmp_path, monkeypatch)
     client = TestClient(web.app)
 
     resp = client.post("/api/push/grok", json={"plan": "SuperGrok"})
     assert resp.status_code == 422
+
+
+def test_push_grok_monthly_only(tmp_path, monkeypatch):
+    _reset_push_state(tmp_path, monkeypatch)
+    client = TestClient(web.app)
+
+    payload = {
+        "monthly": {"used": 172, "limit": 4000, "resets_at": "2026-08-01T00:00:00Z"},
+        "plan": "SuperGrok",
+    }
+    resp = client.post("/api/push/grok", json=payload)
+    assert resp.status_code == 200
+    usage = client.get("/api/usage").json()
+    providers = [u for u in usage if u["provider"] == "Grok 订阅"]
+    assert len(providers) == 1
+    limits = providers[0]["limits"]
+    assert len(limits) == 1
+    assert limits[0]["time_unit"] == "月"
+    assert limits[0]["used"] == "172"
+    assert limits[0]["limit"] == "4000"
+    assert limits[0]["remaining"] == "3828"
+
+
+def test_push_grok_weekly_only_still_works(tmp_path, monkeypatch):
+    _reset_push_state(tmp_path, monkeypatch)
+    client = TestClient(web.app)
+
+    payload = {
+        "weekly": {"utilization": 12.0, "resets_at": "2026-07-10T04:01:09Z"},
+    }
+    resp = client.post("/api/push/grok", json=payload)
+    assert resp.status_code == 200
+    usage = client.get("/api/usage").json()
+    providers = [u for u in usage if u["provider"] == "Grok 订阅"]
+    assert len(providers) == 1
+    limits = providers[0]["limits"]
+    assert len(limits) == 1
+    assert limits[0]["time_unit"] == "天"
 
 
 def test_expired_grok_push_is_not_returned(tmp_path, monkeypatch):

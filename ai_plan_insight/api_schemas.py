@@ -100,8 +100,16 @@ class GrokWindowPush(BaseModel):
     resets_at: str
 
 
+class GrokMonthlyPush(BaseModel):
+    """Absolute monthly credits meter (limit/used), not a percentage."""
+    used: float
+    limit: float
+    resets_at: str
+
+
 class GrokPushRequest(BaseModel):
-    weekly: GrokWindowPush
+    weekly: GrokWindowPush | None = None
+    monthly: GrokMonthlyPush | None = None
     plan: str | None = None
 
 

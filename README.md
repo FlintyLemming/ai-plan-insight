@@ -36,7 +36,7 @@
 | MiMo Token Plan | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [mimo-usage-agent](https://github.com/FlintyLemming/mimo-usage-agent) |
 | Antigravity | 🤖 需要本地 Agent | 使用 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager)，但原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
 | Claude 订阅 | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [claude-sub-agent](https://github.com/FlintyLemming/claude-sub-agent) |
-| Grok 订阅 | 🤖 需要本地 Agent | 通过 Agent 抓取周配额后推送到面板 | — |
+| Grok 订阅 | 🤖 需要本地 Agent | 通过 Agent 抓取月/周配额后推送到面板 | — |
 | 模型 Token 用量 | 🤖 需要本地 Agent | 抓取各模型 Token 消耗明细后推送到面板，汇总展示在「总模型用量」表格 | [ai-usage-agent](https://github.com/FlintyLemming/ai-usage-agent) |
 
 ## 部署
@@ -223,13 +223,24 @@ curl -X POST http://localhost:8000/api/push/claude \
 
 #### 推送 Grok 订阅用量
 
-传入 `weekly` 的用量百分比 (`utilization`) 和重置时间 (`resets_at`，ISO8601 字符串)。可选 `plan`（订阅档位展示名，如 `SuperGrok`）。
+可同时传入月配额与周配额（对齐 Grok CLI / pi-grok-cli）：
+
+- `monthly`：绝对 credits（`used` / `limit` / `resets_at`）
+- `weekly`：用量百分比（`utilization` / `resets_at`）
+- `plan`：可选订阅档位展示名（如 `SuperGrok`）
+
+至少需要 `monthly` 或 `weekly` 之一。
 
 ```bash
 curl -X POST http://localhost:8000/api/push/grok \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <push_auth_secret>" \
   -d '{
+    "monthly": {
+      "used": 448,
+      "limit": 15000,
+      "resets_at": "2026-08-01T00:00:00+00:00"
+    },
     "weekly": {
       "utilization": 45.2,
       "resets_at": "2026-07-10T04:01:09Z"
@@ -238,7 +249,7 @@ curl -X POST http://localhost:8000/api/push/grok \
   }'
 ```
 
-无 plan 时可省略该字段；仅空白的 `plan` 会被忽略。缺少 `weekly` 会返回 422。
+无 plan 时可省略该字段；仅空白的 `plan` 会被忽略。`monthly` 与 `weekly` 都缺会返回 422。
 
 #### 推送模型 Token 用量
 
