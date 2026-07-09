@@ -44,6 +44,9 @@
     "cursor": {
       "order": 25
     },
+    "grok": {
+      "order": 11
+    },
     "claude": {
       "order": 12
     }

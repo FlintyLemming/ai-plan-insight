@@ -36,6 +36,7 @@
 | MiMo Token Plan | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [mimo-usage-agent](https://github.com/FlintyLemming/mimo-usage-agent) |
 | Antigravity | 🤖 需要本地 Agent | 使用 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager)，但原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
 | Claude 订阅 | 🤖 需要本地 Agent | 通过 Agent 抓取后推送到面板 | [claude-sub-agent](https://github.com/FlintyLemming/claude-sub-agent) |
+| Grok 订阅 | 🤖 需要本地 Agent | 通过 Agent 抓取周配额后推送到面板 | — |
 | 模型 Token 用量 | 🤖 需要本地 Agent | 抓取各模型 Token 消耗明细后推送到面板，汇总展示在「总模型用量」表格 | [ai-usage-agent](https://github.com/FlintyLemming/ai-usage-agent) |
 
 ## 部署
@@ -112,7 +113,7 @@ docker compose up -d
 
 不需要的 Provider 直接删除即可。
 
-每个 Provider 还支持可选的 `order` 字段，用于控制卡片在面板中的显示顺序：数值越小越靠前，未填写时默认 `999`（排到最后）。推送类服务（`cursor` / `claude` / `mimo_token_plan`）也可以在 `providers` 里加一条只含 `order` 的占位项来指定它们的位置。
+每个 Provider 还支持可选的 `order` 字段，用于控制卡片在面板中的显示顺序：数值越小越靠前，未填写时默认 `999`（排到最后）。推送类服务（`cursor` / `claude` / `grok` / `mimo_token_plan`）也可以在 `providers` 里加一条只含 `order` 的占位项来指定它们的位置。
 
 ```json
 {
@@ -145,10 +146,11 @@ Web 模式下提供以下接口：
 - `POST /api/push/mimo` — 接收 MiMo 的用量推送
 - `POST /api/push/antigravity` — 接收 Antigravity 的用量推送
 - `POST /api/push/claude` — 接收 Claude 订阅的用量推送
+- `POST /api/push/grok` — 接收 Grok 订阅的用量推送
 
 后台数据每 30 秒自动刷新。若某个 Provider 连续 3 次取数据失败，才会从页面消失。
 
-对于通过 Push API 推送数据的 Provider（Cursor、MiMo、Antigravity、Claude），数据保留 30 分钟。若 30 分钟内未收到新的推送，对应区块将从页面消失，直到再次推送。
+对于通过 Push API 推送数据的 Provider（Cursor、MiMo、Antigravity、Claude、Grok），数据保留 30 分钟。若 30 分钟内未收到新的推送，对应区块将从页面消失，直到再次推送。
 
 ### 用量推送 (Push API)
 
@@ -219,6 +221,25 @@ curl -X POST http://localhost:8000/api/push/claude \
   }'
 ```
 
+#### 推送 Grok 订阅用量
+
+传入 `weekly` 的用量百分比 (`utilization`) 和重置时间 (`resets_at`，ISO8601 字符串)。可选 `plan`（订阅档位展示名，如 `SuperGrok`）。
+
+```bash
+curl -X POST http://localhost:8000/api/push/grok \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <push_auth_secret>" \
+  -d '{
+    "weekly": {
+      "utilization": 45.2,
+      "resets_at": "2026-07-10T04:01:09Z"
+    },
+    "plan": "SuperGrok"
+  }'
+```
+
+无 plan 时可省略该字段；仅空白的 `plan` 会被忽略。缺少 `weekly` 会返回 422。
+
 #### 推送模型 Token 用量
 
 将各模型的 Token 消耗明细推送到面板，汇总展示在「总模型用量」表格中。可使用 [ai-usage-agent](https://github.com/FlintyLemming/ai-usage-agent) 自动抓取并推送。
@@ -276,6 +297,7 @@ Set `push_auth_secret` in `config.json`. While `enforce_push_auth` is `false` (t
 - `POST /api/push/cursor`
 - `POST /api/push/mimo`
 - `POST /api/push/claude`
+- `POST /api/push/grok`
 - `POST /api/usage/report`
 
 ### Example: authenticated Cursor push
