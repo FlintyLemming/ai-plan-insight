@@ -49,69 +49,46 @@ def test_mobile_ui():
             print(f"    ✗ FAIL: Page overflows horizontally (scrollWidth={scroll_width} > clientWidth={client_width})")
             failed += 1
 
-        # ---- Test 2: Table wrapper allows horizontal scroll ----
-        print("==> Test 2: Checking table horizontal scroll container...")
+        # ---- Test 2: Mobile table hides token-breakdown columns ----
+        print("==> Test 2: Checking mobile table hides breakdown columns...")
         table_wrap = page.locator(".usage-table-wrap")
         if table_wrap.count() > 0:
-            wrap_overflow_x = table_wrap.evaluate("el => getComputedStyle(el).overflowX")
-            print(f"    table-wrap overflow-x: {wrap_overflow_x}")
-            if wrap_overflow_x in ("auto", "scroll"):
-                print("    ✓ PASS: Table wrapper has overflow-x:auto/scroll")
+            # On mobile the per-token breakdown columns (输入/输出/缓存读/缓存写/推理)
+            # are hidden; only 模型名 + 总计 remain, so the table needs no scroll.
+            detail_th_hidden = page.locator(".usage-table th.col-detail").first.evaluate(
+                "el => getComputedStyle(el).display"
+            )
+            detail_td_hidden = page.locator(".usage-table td.col-detail").first.evaluate(
+                "el => getComputedStyle(el).display"
+            )
+            print(f"    th.col-detail display: {detail_th_hidden}, td.col-detail display: {detail_td_hidden}")
+            if detail_th_hidden == "none" and detail_td_hidden == "none":
+                print("    ✓ PASS: Breakdown columns hidden on mobile")
                 passed += 1
             else:
-                print(f"    ✗ FAIL: Table wrapper overflow-x is '{wrap_overflow_x}', expected auto/scroll")
+                print("    ✗ FAIL: Breakdown columns still visible on mobile")
                 failed += 1
 
-            table_el = page.locator(".usage-table")
-            if table_el.count() > 0:
-                table_display_min_width = table_el.evaluate("el => getComputedStyle(el).minWidth")
-                print(f"    table min-width: {table_display_min_width}")
-                # Verify sticky first column for mobile
-                th_model = page.locator(".usage-table th.col-model").first
-                td_model = page.locator(".usage-table td.col-model").first
-                th_pos = th_model.evaluate("el => getComputedStyle(el).position")
-                td_pos = td_model.evaluate("el => getComputedStyle(el).position")
-                print(f"    th.col-model position: {th_pos}, td.col-model position: {td_pos}")
-                if th_pos == "sticky" and td_pos == "sticky":
-                    print("    ✓ PASS: First table column is sticky on mobile")
-                    passed += 1
-                else:
-                    print("    ✗ FAIL: First column sticky positioning missing")
-                    failed += 1
-
-                # Actually scroll the table horizontally and verify it works
-                try:
-                    scroll_left_before = table_wrap.evaluate("el => el.scrollLeft")
-                    box = table_wrap.bounding_box()
-                    # Simulate a horizontal drag on the table (best-effort; real
-                    # mobile scroll is handled by the browser from CSS).
-                    page.mouse.move(box["x"] + box["width"] - 30, box["y"] + 30)
-                    page.mouse.down()
-                    page.mouse.move(box["x"] + 30, box["y"] + 30, steps=10)
-                    page.mouse.up()
-                    page.wait_for_timeout(300)
-                    scroll_left_after_drag = table_wrap.evaluate("el => el.scrollLeft")
-                    print(f"    table scrollLeft before={scroll_left_before}, after drag={scroll_left_after_drag}")
-                    if scroll_left_after_drag > scroll_left_before + 5:
-                        print("    ✓ PASS: Table can be horizontally scrolled via drag")
-                        passed += 1
-                    else:
-                        # Fallback: verify the container is programmatically scrollable.
-                        table_wrap.evaluate("el => { el.scrollLeft += 200; }")
-                        page.wait_for_timeout(200)
-                        sl_js = table_wrap.evaluate("el => el.scrollLeft")
-                        print(f"    fallback JS scrollLeft: {sl_js}")
-                        if sl_js > 5:
-                            print("    ✓ PASS: Table scrollable programmatically (JS scrollLeft works)")
-                            passed += 1
-                        else:
-                            print("    ✗ FAIL: Table not scrollable even programmatically")
-                            failed += 1
-                except Exception as e:
-                    print(f"    ✗ FAIL: Table scroll test error: {e}")
-                    failed += 1
+            # 模型名 + 总计 must still be visible
+            model_th_disp = page.locator(".usage-table th.col-model").first.evaluate("el => getComputedStyle(el).display")
+            total_th_disp = page.locator(".usage-table th.col-total").first.evaluate("el => getComputedStyle(el).display")
+            print(f"    th.col-model display: {model_th_disp}, th.col-total display: {total_th_disp}")
+            if model_th_disp != "none" and total_th_disp != "none":
+                print("    ✓ PASS: Model + total columns remain visible")
+                passed += 1
             else:
-                print("    ✗ FAIL: Usage table not rendered")
+                print("    ✗ FAIL: Model or total column hidden on mobile")
+                failed += 1
+
+            # No horizontal scroll needed on mobile
+            wrap_overflow_x = table_wrap.evaluate("el => getComputedStyle(el).overflowX")
+            print(f"    table-wrap overflow-x: {wrap_overflow_x}")
+            table_overflow = table_wrap.evaluate("el => el.scrollWidth - el.clientWidth")
+            if table_overflow <= 2:
+                print(f"    ✓ PASS: Table fits without horizontal scroll (overflow {table_overflow}px)")
+                passed += 1
+            else:
+                print(f"    ✗ FAIL: Table overflows by {table_overflow}px on mobile")
                 failed += 1
         else:
             print("    ✗ FAIL: usage-table-wrap not found")

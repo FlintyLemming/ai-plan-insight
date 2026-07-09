@@ -63,12 +63,15 @@ def test_usage_chart_view_has_full_width_layout():
 def test_usage_chart_y_axis_has_room_for_wide_labels():
     h = read_index()
     chart_renderer = h[h.index("function renderUsageChart"):h.index("// Stacked bars")]
-    pad_match = re.search(r"padL = (\d+)", chart_renderer)
+    # padL is assigned both a mobile value (132) and a desktop value (86).
+    # The labels must fit at the smaller (desktop) padding.
+    pad_values = [int(v) for v in re.findall(r"padL = \w+ \? (\d+) : (\d+)", chart_renderer)[0]]
     offset_match = re.search(r'x="\$\{padL - (\d+)\}"', chart_renderer)
 
-    assert pad_match is not None
+    assert pad_values, "expected a mobile/desktop padL ternary"
     assert offset_match is not None
-    label_anchor_x = int(pad_match.group(1)) - int(offset_match.group(1))
+    # Use the smallest configured padL so the invariant holds on every viewport.
+    label_anchor_x = min(pad_values) - int(offset_match.group(1))
     assert label_anchor_x >= 70
 
 
