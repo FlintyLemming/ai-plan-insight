@@ -98,6 +98,36 @@ def _persist_usage_snapshot(usage: UsageResponse, source_kind: str) -> None:
         logger.warning("failed to persist usage snapshot: %s", e)
 
 
+def _persist_push_card_snapshot(
+    push_key: str, usage: UsageResponse, recorded_at: datetime
+) -> None:
+    """Best-effort latest-card UPSERT for restart restore; never raises."""
+    try:
+        with closing(_usage_conn()) as conn:
+            usage_store.upsert_push_card_snapshot(
+                conn, push_key, usage, recorded_at=recorded_at.isoformat()
+            )
+            conn.commit()
+    except Exception as e:
+        logger.warning("failed to persist push card snapshot: %s", e)
+
+
+def _restore_push_card_snapshots() -> None:
+    """Load last push cards into memory so restart can show them (TTL still applies)."""
+    global _pushed_results, _pushed_at
+    try:
+        with closing(_usage_conn()) as conn:
+            rows = usage_store.load_push_card_snapshots(conn)
+    except Exception as e:
+        logger.warning("failed to restore push card snapshots: %s", e)
+        return
+    for push_key, recorded_at, usage in rows:
+        _pushed_results[push_key] = usage
+        _pushed_at[push_key] = recorded_at
+    if rows:
+        logger.info("Restored %d push card snapshot(s)", len(rows))
+
+
 def _verify_push_auth(request: Request, source_id: str) -> tuple[bool, str | None]:
     """Check the Bearer token against the configured global secret.
 
@@ -330,6 +360,7 @@ async def _background_refresh():
 async def lifespan(app: FastAPI):
     try:
         usage_store.init_db(resolve_usage_db_path())
+        _restore_push_card_snapshots()
     except Exception as e:
         logger.error("usage DB init failed: %s", e)
     task_refresh = asyncio.create_task(_background_refresh())
@@ -420,8 +451,10 @@ async def push_antigravity(req: AntigravityPushRequest, request: Request):
         ]
     )
     _persist_usage_snapshot(_pushed_results["antigravity"], "push")
-    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    _pushed_at["antigravity"] = datetime.now().astimezone()
+    now = datetime.now().astimezone()
+    _last_updated = now.strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["antigravity"] = now
+    _persist_push_card_snapshot("antigravity", _pushed_results["antigravity"], now)
     return {"status": "ok"}
 
 
@@ -455,8 +488,10 @@ async def push_cursor(req: CursorPushRequest, request: Request):
         balances={"到期时间": end_display},
     )
     _persist_usage_snapshot(_pushed_results["cursor"], "push")
-    _last_updated = dt.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    _pushed_at["cursor"] = dt.now().astimezone()
+    now = dt.now().astimezone()
+    _last_updated = now.strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["cursor"] = now
+    _persist_push_card_snapshot("cursor", _pushed_results["cursor"], now)
     return {"status": "ok"}
 
 
@@ -472,8 +507,10 @@ async def push_mimo(req: MimoPushRequest, request: Request):
         balances=req.balances,
     )
     _persist_usage_snapshot(_pushed_results["mimo_token_plan"], "push")
-    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    _pushed_at["mimo_token_plan"] = datetime.now().astimezone()
+    now = datetime.now().astimezone()
+    _last_updated = now.strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["mimo_token_plan"] = now
+    _persist_push_card_snapshot("mimo_token_plan", _pushed_results["mimo_token_plan"], now)
     return {"status": "ok"}
 
 
@@ -503,8 +540,10 @@ async def push_claude(req: ClaudePushRequest, request: Request):
         ],
     )
     _persist_usage_snapshot(_pushed_results["claude"], "push")
-    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    _pushed_at["claude"] = datetime.now().astimezone()
+    now = datetime.now().astimezone()
+    _last_updated = now.strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["claude"] = now
+    _persist_push_card_snapshot("claude", _pushed_results["claude"], now)
     return {"status": "ok"}
 
 
@@ -550,8 +589,10 @@ async def push_grok(req: GrokPushRequest, request: Request):
         membership_level=plan,
         limits=limits,
     )
-    _last_updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    _pushed_at["grok"] = datetime.now().astimezone()
+    now = datetime.now().astimezone()
+    _last_updated = now.strftime("%Y-%m-%d %H:%M:%S %Z")
+    _pushed_at["grok"] = now
+    _persist_push_card_snapshot("grok", _pushed_results["grok"], now)
     return {"status": "ok"}
 
 

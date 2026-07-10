@@ -72,6 +72,14 @@ CREATE TABLE IF NOT EXISTS provider_item (
 )
 """
 
+_CREATE_PUSH_CARD_SNAPSHOT = """
+CREATE TABLE IF NOT EXISTS push_card_snapshot (
+    push_key     TEXT PRIMARY KEY,
+    recorded_at  TEXT NOT NULL,
+    raw_json     TEXT NOT NULL
+)
+"""
+
 _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
@@ -216,6 +224,53 @@ def record_snapshot(
     return snapshot_id
 
 
+def upsert_push_card_snapshot(
+    conn: sqlite3.Connection,
+    push_key: str,
+    usage: UsageResponse,
+    recorded_at: str | None = None,
+) -> None:
+    """Keep exactly one latest card snapshot per push key (UPSERT).
+
+    The caller is responsible for commit. `recorded_at` defaults to now
+    (timezone-aware ISO). Used to restore `_pushed_results` / `_pushed_at`
+    after a process restart; TTL filtering still uses this timestamp.
+    """
+    ts = recorded_at or datetime.now().astimezone().isoformat()
+    conn.execute(
+        "INSERT INTO push_card_snapshot (push_key, recorded_at, raw_json) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT(push_key) DO UPDATE SET "
+        "recorded_at = excluded.recorded_at, raw_json = excluded.raw_json",
+        (push_key, ts, usage.model_dump_json()),
+    )
+
+
+def load_push_card_snapshots(
+    conn: sqlite3.Connection,
+) -> list[tuple[str, datetime, UsageResponse]]:
+    """Load every stored push-card snapshot.
+
+    Returns (push_key, recorded_at, usage) tuples. `recorded_at` is parsed
+    as a timezone-aware datetime (ISO). Malformed rows are skipped so a
+    single bad entry cannot block startup restore.
+    """
+    rows = conn.execute(
+        "SELECT push_key, recorded_at, raw_json FROM push_card_snapshot"
+    ).fetchall()
+    out: list[tuple[str, datetime, UsageResponse]] = []
+    for push_key, recorded_at, raw_json in rows:
+        try:
+            usage = UsageResponse.model_validate_json(raw_json)
+            ts = datetime.fromisoformat(recorded_at)
+            if ts.tzinfo is None:
+                ts = ts.astimezone()
+            out.append((push_key, ts, usage))
+        except Exception:
+            continue
+    return out
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     """Create tables (idempotent) and enable WAL.
 
@@ -229,6 +284,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_CREATE_SOURCE)
     conn.execute(_CREATE_PROVIDER_SNAPSHOT)
     conn.execute(_CREATE_PROVIDER_ITEM)
+    conn.execute(_CREATE_PUSH_CARD_SNAPSHOT)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_provider_item_snapshot "
         "ON provider_item(snapshot_id)"

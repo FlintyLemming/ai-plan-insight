@@ -511,3 +511,61 @@ def test_cross_source_sum_includes_cache_reasoning(tmp_path):
     assert rows[0].cache_read_tokens == 3000  # summed across sources
     assert rows[0].total == 3300  # 300 + 3000
     conn.close()
+
+
+def test_upsert_push_card_snapshot_keeps_one_row_per_key(tmp_path):
+    """Re-pushing the same key overwrites; two keys stay as two rows."""
+    conn = _connect(tmp_path)
+    first = UsageResponse(
+        provider="Claude 订阅",
+        limits=[LimitResponse(duration=5, time_unit="小时", limit="100", used="10", remaining="90")],
+    )
+    second = UsageResponse(
+        provider="Claude 订阅",
+        limits=[LimitResponse(duration=5, time_unit="小时", limit="100", used="50", remaining="50")],
+    )
+    cursor = UsageResponse(provider="Cursor", limits=[])
+
+    usage_store.upsert_push_card_snapshot(
+        conn, "claude", first, recorded_at="2026-07-10T10:00:00+08:00"
+    )
+    usage_store.upsert_push_card_snapshot(
+        conn, "claude", second, recorded_at="2026-07-10T10:05:00+08:00"
+    )
+    usage_store.upsert_push_card_snapshot(
+        conn, "cursor", cursor, recorded_at="2026-07-10T10:06:00+08:00"
+    )
+    conn.commit()
+
+    rows = conn.execute(
+        "SELECT push_key, recorded_at, raw_json FROM push_card_snapshot ORDER BY push_key"
+    ).fetchall()
+    assert len(rows) == 2
+    assert rows[0][0] == "claude"
+    assert rows[0][1] == "2026-07-10T10:05:00+08:00"
+    assert '"used":"50"' in rows[0][2]
+    assert rows[1][0] == "cursor"
+    conn.close()
+
+
+def test_load_push_card_snapshots_round_trips(tmp_path):
+    conn = _connect(tmp_path)
+    usage = UsageResponse(
+        provider="Grok 订阅",
+        membership_level="SuperGrok",
+        limits=[LimitResponse(duration=7, time_unit="天", limit="100", used="20", remaining="80")],
+    )
+    usage_store.upsert_push_card_snapshot(
+        conn, "grok", usage, recorded_at="2026-07-10T12:00:00+08:00"
+    )
+    conn.commit()
+
+    loaded = usage_store.load_push_card_snapshots(conn)
+    assert len(loaded) == 1
+    key, recorded_at, restored = loaded[0]
+    assert key == "grok"
+    assert recorded_at.isoformat() == "2026-07-10T12:00:00+08:00"
+    assert restored.provider == "Grok 订阅"
+    assert restored.membership_level == "SuperGrok"
+    assert restored.limits[0].used == "20"
+    conn.close()

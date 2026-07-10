@@ -25,7 +25,13 @@ def test_startup_creates_all_tables(tmp_path, monkeypatch):
         tables = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()}
-        assert tables >= {"usage_point", "source", "provider_snapshot", "provider_item"}
+        assert tables >= {
+            "usage_point",
+            "source",
+            "provider_snapshot",
+            "provider_item",
+            "push_card_snapshot",
+        }
 
         indexes = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='index'"
