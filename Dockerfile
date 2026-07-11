@@ -5,8 +5,7 @@ ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
-
 COPY ai_plan_insight/ ./ai_plan_insight/
+RUN pip install --no-cache-dir .
 
 CMD ["python", "-m", "ai_plan_insight"]
