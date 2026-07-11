@@ -331,6 +331,40 @@
     font-variant-numeric: tabular-nums;
   }
   .usage-hover { cursor: pointer; }
+  .stale-alert {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-left: 3px solid #f59e0b;
+    border-radius: 12px;
+    padding: 0.7rem 1rem;
+    margin-top: 0.85rem;
+    font-size: 0.88rem;
+    color: #e2e8f0;
+  }
+  .stale-alert-text {
+    flex: 1;
+    line-height: 1.5;
+  }
+  .stale-alert-text .stale-last-seen {
+    color: #94a3b8;
+  }
+  .stale-dismiss-btn {
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.7rem;
+    cursor: pointer;
+  }
+  .stale-dismiss-btn:hover {
+    border-color: #94a3b8;
+    color: #e2e8f0;
+  }
   .empty-usage {
     color: #64748b;
     font-size: 0.95rem;
@@ -536,6 +570,7 @@
     </div>
     <div id="usage-chart-container"></div>
     <div id="usage-table-container"></div>
+    <div id="stale-sources-container"></div>
   </div>
 
 <script>
@@ -904,12 +939,57 @@ function renderUsageTable() {
 
 async function refreshUsageChart() {
   const container = document.getElementById('usage-chart-container');
+  refreshStaleSources();
   try {
     const resp = await fetch(`/api/usage/timeseries?days=${usageRange}`);
     const data = await resp.json();
     renderUsageChart(data);
   } catch (e) {
     if (container) container.innerHTML = `<div class="empty-usage">加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderStaleSources(sources) {
+  const container = document.getElementById('stale-sources-container');
+  if (!container) return;
+  if (!Array.isArray(sources) || sources.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = sources.map(s => {
+    const name = s.label || s.source_id;
+    const seen = new Date(s.last_seen);
+    const silentDays = Math.max(1, Math.floor((Date.now() - seen.getTime()) / 86400000));
+    const seenText = isNaN(seen.getTime()) ? '' :
+      `（最后上报：${seen.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })} ${seen.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}）`;
+    return `
+<div class="stale-alert">
+  <span class="stale-alert-text">⚠️ 设备「${escapeHtml(name)}」已超过 ${silentDays} 天未上传数据<span class="stale-last-seen">${seenText}</span>，推送 Agent 可能已停止工作</span>
+  <button class="stale-dismiss-btn" data-source-id="${escapeHtml(s.source_id)}">不再提示</button>
+</div>`;
+  }).join('');
+
+  container.querySelectorAll('.stale-dismiss-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const resp = await fetch(`/api/sources/${encodeURIComponent(btn.getAttribute('data-source-id'))}/dismiss-stale`, { method: 'POST' });
+        if (resp.ok) btn.closest('.stale-alert').remove();
+        else btn.disabled = false;
+      } catch (e) {
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function refreshStaleSources() {
+  try {
+    const resp = await fetch('/api/sources/stale');
+    renderStaleSources(await resp.json());
+  } catch (e) {
+    // Liveness alert is best-effort; never disturb the usage page.
+    renderStaleSources([]);
   }
 }
 

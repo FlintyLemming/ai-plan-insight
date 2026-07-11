@@ -631,6 +631,35 @@ async def report_usage(req: UsageReportRequest, request: Request):
     return {"ok": True, "upserted": written, "dropped": dropped}
 
 
+@app.get("/api/sources/stale")
+async def get_stale_sources():
+    """List reporting devices silent for over 24h (agent liveness alert)."""
+    try:
+        with closing(_usage_conn()) as conn:
+            return usage_store.get_stale_sources(conn)
+    except Exception as e:
+        # The alert is best-effort; never let it break the usage page.
+        logger.error("stale sources query failed: %s", e)
+        return []
+
+
+@app.post("/api/sources/{source_id}/dismiss-stale")
+async def dismiss_stale_source(source_id: str):
+    """Silence the stale alert for one device until it reports again."""
+    try:
+        with closing(_usage_conn()) as conn:
+            found = usage_store.dismiss_stale_source(
+                conn, source_id, datetime.now().astimezone().isoformat()
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("dismiss stale source failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    if not found:
+        raise HTTPException(status_code=404, detail="unknown source")
+    return {"ok": True}
+
+
 @app.get("/api/admin/sources")
 async def get_admin_sources():
     """Return the authentication status of every source that has reported."""
