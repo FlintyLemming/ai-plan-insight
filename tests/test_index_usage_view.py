@@ -122,6 +122,15 @@ def test_usage_table_columns_match_spec():
     assert "输出 token" in h
 
 
+def test_usage_table_model_cells_are_left_aligned():
+    h = read_index()
+    assert re.search(
+        r"\.usage-table\s+td\.col-model\s*\{[^}]*text-align:\s*left;[^}]*\}",
+        h,
+        re.DOTALL,
+    )
+
+
 def test_usage_table_pagination_controls_present():
     h = read_index()
     assert "usage-page-btn" in h
