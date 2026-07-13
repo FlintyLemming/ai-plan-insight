@@ -304,6 +304,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE source ADD COLUMN auth_valid INTEGER NOT NULL DEFAULT 0")
     if "last_auth_at" not in cols:
         conn.execute("ALTER TABLE source ADD COLUMN last_auth_at TEXT")
+    if "stale_dismissed_at" not in cols:
+        conn.execute("ALTER TABLE source ADD COLUMN stale_dismissed_at TEXT")
     usage_cols = {row[1] for row in conn.execute("PRAGMA table_info(usage_point)")}
     for col in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
         if col not in usage_cols:
@@ -399,13 +401,16 @@ def upsert_points(
         effective = min(reported_at, datetime.now(UTC8).strftime("%Y-%m-%d"))
         if new_frozen is None or effective > new_frozen:
             new_frozen = effective
+    # A fresh report also re-arms the stale alert: any dismissal only holds
+    # until the device comes back, so the next outage alerts again.
     conn.execute(
         "INSERT INTO source (source_id, label, last_seen, frozen_before) "
         "VALUES (?, ?, ?, ?) "
         "ON CONFLICT(source_id) DO UPDATE SET "
         "label=COALESCE(excluded.label, source.label), "
         "last_seen=excluded.last_seen, "
-        "frozen_before=excluded.frozen_before",
+        "frozen_before=excluded.frozen_before, "
+        "stale_dismissed_at=NULL",
         (source_id, source_label, ts, new_frozen),
     )
     return written, dropped
@@ -507,6 +512,55 @@ def update_source_auth(
         "UPDATE source SET auth_valid = ?, last_auth_at = ? WHERE source_id = ?",
         (1 if is_valid else 0, now, source_id),
     )
+
+
+STALE_THRESHOLD = timedelta(hours=24)
+
+
+def get_stale_sources(
+    conn: sqlite3.Connection, now: datetime | None = None
+) -> list[dict]:
+    """Return reporting devices silent for more than 24h, minus dismissed ones.
+
+    Only sources that have actually reported count (`last_seen NOT NULL`);
+    push-card stub rows never alert. A zero-point report still bumps
+    `last_seen`, so this tracks agent liveness, not usage volume. Rows whose
+    `last_seen` cannot be parsed are skipped.
+    """
+    ref = now or datetime.now(UTC8)
+    rows = conn.execute(
+        "SELECT source_id, label, last_seen FROM source "
+        "WHERE last_seen IS NOT NULL AND stale_dismissed_at IS NULL "
+        "ORDER BY source_id"
+    ).fetchall()
+    out: list[dict] = []
+    for source_id, label, last_seen in rows:
+        try:
+            seen_at = datetime.fromisoformat(last_seen)
+        except ValueError:
+            continue
+        if seen_at.tzinfo is None:
+            seen_at = seen_at.replace(tzinfo=UTC8)
+        if ref - seen_at > STALE_THRESHOLD:
+            out.append(
+                {"source_id": source_id, "label": label, "last_seen": last_seen}
+            )
+    return out
+
+
+def dismiss_stale_source(
+    conn: sqlite3.Connection, source_id: str, now: str
+) -> bool:
+    """Mark one source's stale alert as dismissed; caller must commit.
+
+    Returns False when the source does not exist (for the endpoint's 404).
+    The flag is cleared automatically by the next `upsert_points` report.
+    """
+    cur = conn.execute(
+        "UPDATE source SET stale_dismissed_at = ? WHERE source_id = ?",
+        (now, source_id),
+    )
+    return cur.rowcount > 0
 
 
 def get_source_auth_status(conn: sqlite3.Connection) -> list[dict]:
