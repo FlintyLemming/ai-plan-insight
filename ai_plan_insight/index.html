@@ -557,6 +557,7 @@
   <h1>AI Plan Insight</h1>
   <div class="tab-bar">
     <button class="tab active" data-tab="balance">订阅余额</button>
+    <button class="tab" data-tab="balance-v2">订阅余额（新）</button>
     <button class="tab" data-tab="usage">模型用量</button>
   </div>
   <div class="updated" id="updated">加载中...</div>
@@ -587,17 +588,21 @@ const TAB_KEY = 'ai-plan-insight:tab';
 let activeTab = localStorage.getItem(TAB_KEY) || 'balance';
 
 function applyTab(tab) {
+  // Validate tab value; fall back to 'balance' for unknown values
+  const validTabs = ['balance', 'balance-v2', 'usage'];
+  if (!validTabs.includes(tab)) tab = 'balance';
   activeTab = tab;
   localStorage.setItem(TAB_KEY, tab);
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+  document.querySelectorAll('.tab').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-tab') === tab);
   });
-  const showBalance = tab === 'balance';
-  document.getElementById('grid').style.display = showBalance ? '' : 'none';
-  document.getElementById('usage-chart-view').style.display = showBalance ? 'none' : 'block';
-  if (!showBalance) {
-    refreshUsageChart();
-  }
+  const grid = document.getElementById('grid');
+  const usageView = document.getElementById('usage-chart-view');
+  grid.style.display = (tab === 'balance' || tab === 'balance-v2') ? 'grid' : 'none';
+  usageView.style.display = (tab === 'usage') ? 'block' : 'none';
+  if (tab === 'balance') refresh();
+  else if (tab === 'balance-v2') refreshV2();
+  else if (tab === 'usage') refreshUsageChart();
 }
 
 document.querySelectorAll('.tab').forEach(btn => {
@@ -1267,10 +1272,11 @@ function renderHistoryView(data) {
 }
 
 function renderHeader(data, subtitle) {
+  const cardKey = data.instance_id || data.provider;
   const canToggle = hasHistoryUsage(data);
-  const mode = cardViewModes[data.provider] || 'usage';
+  const mode = cardViewModes[cardKey] || 'usage';
   const toggle = canToggle
-    ? `<button class="view-toggle" data-view-toggle="${data.provider}" onclick="toggleCardView('${data.provider.replace(/'/g, "\\'")}')">${mode === 'history' ? '用量' : '历史'}</button>`
+    ? `<button class="view-toggle" data-view-toggle="${cardKey}" onclick="toggleCardView('${cardKey.replace(/'/g, "\\'")}')">${mode === 'history' ? '用量' : '历史'}</button>`
     : '';
   const right = subtitle || toggle
     ? `<span class="card-header-right">${subtitle ? `<span class="card-subtitle">${subtitle}</span>` : ''}${toggle}</span>`
@@ -1291,8 +1297,9 @@ function renderGrid(data) {
 function bindHistoryCharts() {
   const charts = document.querySelectorAll('[data-history-chart]');
   charts.forEach(chartEl => {
-    const provider = chartEl.getAttribute('data-history-chart');
-    const data = latestUsageData.find(d => d.provider === provider);
+    const cardKey = chartEl.getAttribute('data-history-chart');
+    const data = latestUsageData.find(d => d.provider === cardKey)
+      || latestV2Data.find(d => (d.instance_id || d.provider) === cardKey);
     if (!data || !data.history_usage) return;
 
     const history = data.history_usage;
@@ -1348,9 +1355,10 @@ function bindHistoryCharts() {
   });
 }
 
-function toggleCardView(provider) {
-  cardViewModes[provider] = cardViewModes[provider] === 'history' ? 'usage' : 'history';
-  renderGrid(latestUsageData);
+function toggleCardView(cardKey) {
+  cardViewModes[cardKey] = cardViewModes[cardKey] === 'history' ? 'usage' : 'history';
+  if (activeTab === 'balance-v2') renderV2Grid(latestV2Data);
+  else renderGrid(latestUsageData);
 }
 
 function formatTokens(n) {
@@ -1481,7 +1489,7 @@ function renderCard(data) {
   return `
     <div class="card">
       ${renderHeader(data, subtitle)}
-      ${hasHistoryUsage(data) && cardViewModes[data.provider] === 'history'
+      ${hasHistoryUsage(data) && cardViewModes[data.instance_id || data.provider] === 'history'
         ? renderHistoryView(data)
         : `${limitsHtml}${balancesHtml}${tokenUsageHtml}`}
     </div>`;
@@ -1504,8 +1512,52 @@ async function refresh() {
   }
 }
 
+let latestV2Data = [];
+
+async function refreshV2() {
+  try {
+    const [data, status] = await Promise.all([
+      fetch('/api/usage/v2').then(r => r.json()),
+      fetch('/api/status/v2').then(r => r.json()),
+    ]);
+    if (!status.enabled) {
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '<div class="empty-usage">尚未配置订阅余额（新）</div>';
+      return;
+    }
+    if (status.config_error) {
+      const grid = document.getElementById('grid');
+      grid.innerHTML = `<div class="error-card"><div class="card-title">配置错误</div><div style="margin-top:0.5rem;color:#fca5a5;">${status.config_error}</div></div>`;
+      return;
+    }
+    latestV2Data = data;
+    renderV2Grid(data);
+    document.getElementById('loading').style.display = 'none';
+    const updatedEl = document.querySelector('.updated');
+    if (updatedEl && status.last_updated) {
+      updatedEl.textContent = '最后更新：' + status.last_updated;
+    }
+  } catch (e) {
+    document.getElementById('loading').textContent = `加载失败：${e.message}`;
+  }
+}
+
+function renderV2Grid(data) {
+  const grid = document.getElementById('grid');
+  if (!data || data.length === 0) {
+    grid.innerHTML = '<div class="empty-usage">暂无数据</div>';
+    return;
+  }
+  grid.innerHTML = data.map(renderCard).join('');
+  if (activeTab === 'balance-v2') grid.style.display = 'grid';
+  bindHistoryCharts();
+}
+
 refresh();
-setInterval(refresh, 60000);
+setInterval(() => {
+  if (activeTab === 'balance') refresh();
+  else if (activeTab === 'balance-v2') refreshV2();
+}, 60000);
 setInterval(() => { if (activeTab === 'usage') refreshUsageChart(); }, 60000);
 </script>
 </body>
