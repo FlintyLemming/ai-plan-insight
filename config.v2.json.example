@@ -1,0 +1,25 @@
+{
+  "providers": {
+    "claude-personal": {
+      "type": "claude",
+      "mode": "push",
+      "label": "个人号",
+      "order": 12
+    },
+    "claude-work": {
+      "type": "claude",
+      "mode": "push",
+      "label": "工作号",
+      "order": 13
+    },
+    "bigmodel-personal": {
+      "type": "bigmodel",
+      "mode": "fetch",
+      "label": "个人账号",
+      "api_key": "YOUR_BIGMODEL_API_KEY",
+      "order": 20
+    }
+  },
+  "push_auth_secret": "your-secret-token",
+  "enforce_push_auth": true
+}
