@@ -63,6 +63,10 @@ _prev_results: dict[str, UsageResponse] = {}  # last successful result per provi
 _config_path: str | None = None  # set by main() when --config is provided
 _usage_db_path: Path | None = None  # set by main() (--usage-db) or resolved at startup
 
+# v2 state
+_v2_config_path: str | None = None  # set by main() via --v2-config
+_v2_manager = None  # type: V2RuntimeManager | None
+
 
 def resolve_usage_db_path() -> Path:
     """Resolve the usage DB path per spec §4 precedence:
@@ -356,6 +360,40 @@ async def _background_refresh():
         await asyncio.sleep(REFRESH_INTERVAL)
 
 
+def _init_v2_manager() -> None:
+    """Try to load v2 config and create the runtime manager. Sets _v2_manager or leaves it None."""
+    global _v2_manager
+    from .instance_config import load_v2_config, resolve_v2_config_path
+    from .provider_instances import V2RuntimeManager
+
+    v2_path = resolve_v2_config_path(_v2_config_path, config_path=_config_path)
+    if not v2_path.exists():
+        logger.info("v2 config not found at %s, v2 disabled", v2_path)
+        return
+
+    try:
+        v2_config = load_v2_config(str(v2_path))
+    except Exception as e:
+        logger.error("v2 config invalid: %s", e)
+        # Create a disabled manager to surface the error via /api/status/v2
+        mgr = V2RuntimeManager.__new__(V2RuntimeManager)
+        mgr._config = None
+        mgr._config_error = str(e)
+        mgr._enabled = False
+        mgr._last_updated = None
+        mgr._pushed_results = {}
+        mgr._pushed_at = {}
+        mgr._fetch_results = {}
+        mgr._consecutive_failures = {}
+        mgr._prev_results = {}
+        mgr._refresh_task = None
+        mgr._db_path = resolve_usage_db_path()
+        _v2_manager = mgr
+        return
+
+    _v2_manager = V2RuntimeManager(v2_config, resolve_usage_db_path())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -363,9 +401,17 @@ async def lifespan(app: FastAPI):
         _restore_push_card_snapshots()
     except Exception as e:
         logger.error("usage DB init failed: %s", e)
+
+    # Initialize v2
+    _init_v2_manager()
+    if _v2_manager and _v2_manager.enabled:
+        _v2_manager.start()
+
     task_refresh = asyncio.create_task(_background_refresh())
     yield
     task_refresh.cancel()
+    if _v2_manager:
+        _v2_manager.stop()
 
 
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
@@ -814,3 +860,79 @@ async def usage_timeseries(days: int = 90):
             all_models=[],
         )
     return build_timeseries_response(rows, days)
+
+
+# ── v2 endpoints ──────────────────────────────────────────────
+
+@app.get("/api/usage/v2")
+async def get_usage_v2():
+    if _v2_manager is None or not _v2_manager.enabled:
+        return []
+    return _v2_manager.get_usage_v2()
+
+
+@app.get("/api/status/v2")
+async def get_status_v2():
+    if _v2_manager is None:
+        return {"enabled": False, "last_updated": None, "config_error": None}
+    return _v2_manager.get_status()
+
+
+@app.post("/api/push/v2/{instance_id}")
+async def push_v2(instance_id: str, request: Request):
+    if _v2_manager is None or not _v2_manager.enabled:
+        raise HTTPException(status_code=503, detail="v2 not available")
+
+    cfg = _v2_manager.config
+    if instance_id not in cfg.providers:
+        raise HTTPException(status_code=404, detail=f"instance {instance_id!r} not registered")
+
+    inst = cfg.providers[instance_id]
+    if inst.mode != "push":
+        raise HTTPException(
+            status_code=422,
+            detail=f"instance {instance_id!r} is a fetch instance",
+        )
+
+    # Auth check
+    is_valid, reason = _verify_push_auth_v2(request, cfg)
+    if not is_valid:
+        logger.warning("v2 push auth failed for %s: %s", instance_id, reason)
+    if cfg.enforce_push_auth and not is_valid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Get the request model for this type and parse the body
+    from .provider_registry import get_push_request_model
+    req_model = get_push_request_model(inst.type)
+    if req_model is None:
+        raise HTTPException(status_code=422, detail=f"no push schema for type {inst.type!r}")
+
+    try:
+        body = await request.json()
+        payload = req_model.model_validate(body)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        result = await _v2_manager.handle_push(instance_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return result
+
+
+def _verify_push_auth_v2(request: Request, v2_config) -> tuple[bool, str | None]:
+    """Check Bearer token against v2 config's push_auth_secret."""
+    secret = v2_config.push_auth_secret
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return False, "missing"
+    parts = auth_header.strip().split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return False, "malformed"
+    token = parts[1].strip()
+    if not secret:
+        return False, "invalid"
+    if secrets.compare_digest(token, secret):
+        return True, None
+    return False, "invalid"

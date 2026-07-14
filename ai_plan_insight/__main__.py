@@ -19,6 +19,11 @@ def _parse_args() -> argparse.Namespace:
         help="Path to the usage SQLite DB (default: <config dir>/usage.db, or ./data/usage.db)",
     )
     parser.add_argument(
+        "--v2-config",
+        default=None,
+        help="Path to v2 configuration file (default: <config dir>/config.v2.json)",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Run as a web server",
@@ -131,6 +136,8 @@ def main() -> None:
         if args.usage_db:
             from pathlib import Path
             web_mod._usage_db_path = Path(args.usage_db)
+        if args.v2_config:
+            web_mod._v2_config_path = args.v2_config
 
         logging.basicConfig(
             level=logging.DEBUG,
