@@ -557,7 +557,6 @@
   <h1>AI Plan Insight</h1>
   <div class="tab-bar">
     <button class="tab active" data-tab="balance">订阅余额</button>
-    <button class="tab" data-tab="balance-v2">订阅余额（新）</button>
     <button class="tab" data-tab="usage">模型用量</button>
   </div>
   <div class="updated" id="updated">加载中...</div>
@@ -586,6 +585,44 @@ const TIME_UNIT_LABELS = {
 
 const TAB_KEY = 'ai-plan-insight:tab';
 let activeTab = localStorage.getItem(TAB_KEY) || 'balance';
+let balanceSource = 'v1'; // 'v1' or 'v2' — which API the "balance" tab fetches from
+
+async function initTabs() {
+  try {
+    const status = await fetch('/api/status/v2').then(r => r.json());
+    const v2Enabled = status.enabled;
+    const v1HasProviders = status.v1_has_providers;
+
+    if (v2Enabled && v1HasProviders) {
+      // Both sources: insert "订阅余额（新）" tab, balance tab stays v1
+      balanceSource = 'v1';
+      const tabBar = document.querySelector('.tab-bar');
+      const usageBtn = tabBar.querySelector('[data-tab="usage"]');
+      const v2Btn = document.createElement('button');
+      v2Btn.className = 'tab';
+      v2Btn.setAttribute('data-tab', 'balance-v2');
+      v2Btn.textContent = '订阅余额（新）';
+      v2Btn.addEventListener('click', () => applyTab('balance-v2'));
+      tabBar.insertBefore(v2Btn, usageBtn);
+    } else if (v2Enabled && !v1HasProviders) {
+      // Only v2: "订阅余额" tab uses v2 data directly
+      balanceSource = 'v2';
+    }
+    // else: v2 not enabled, balanceSource stays 'v1'
+  } catch (e) {
+    // v2 endpoint unreachable, stay on v1
+  }
+
+  // Re-bind tab click handlers (for statically defined buttons)
+  document.querySelectorAll('.tab').forEach(btn => {
+    if (!btn._v2bound) {
+      btn.addEventListener('click', () => applyTab(btn.getAttribute('data-tab')));
+      btn._v2bound = true;
+    }
+  });
+
+  applyTab(activeTab);
+}
 
 function applyTab(tab) {
   // Validate tab value; fall back to 'balance' for unknown values
@@ -600,16 +637,15 @@ function applyTab(tab) {
   const usageView = document.getElementById('usage-chart-view');
   grid.style.display = (tab === 'balance' || tab === 'balance-v2') ? 'grid' : 'none';
   usageView.style.display = (tab === 'usage') ? 'block' : 'none';
-  if (tab === 'balance') refresh();
+  if (tab === 'balance') {
+    if (balanceSource === 'v2') refreshV2();
+    else refresh();
+  }
   else if (tab === 'balance-v2') refreshV2();
   else if (tab === 'usage') refreshUsageChart();
 }
 
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => applyTab(btn.getAttribute('data-tab')));
-});
-
-applyTab(activeTab);
+initTabs();
 
 const RANGE_KEY = 'ai-plan-insight:usage-range';
 let usageRange = Number(localStorage.getItem(RANGE_KEY)) || 90;
@@ -1254,10 +1290,11 @@ function renderHistoryView(data) {
     </div>`;
   }).join('');
 
-  const chartId = `history-chart-${data.provider.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const cardKeyForChart = data.instance_id || data.provider;
+  const chartId = `history-chart-${cardKeyForChart.replace(/[^a-zA-Z0-9]/g, '')}`;
   return `
     <div class="history-summary">近 30 天：${formatTokens(history.total_tokens)} tokens · ${formatCount(history.total_calls)} 次调用</div>
-    <div class="history-chart" data-history-chart="${data.provider}" id="${chartId}">
+    <div class="history-chart" data-history-chart="${cardKeyForChart}" id="${chartId}">
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="近 30 天模型 token 用量折线图" style="width:100%;height:100%;">
         <line class="history-grid-line" x1="${padX}" y1="${padY}" x2="${width - padX}" y2="${padY}"></line>
         <line class="history-grid-line" x1="${padX}" y1="${height / 2}" x2="${width - padX}" y2="${height / 2}"></line>
@@ -1287,10 +1324,10 @@ function renderHeader(data, subtitle) {
 function renderGrid(data) {
   const grid = document.getElementById('grid');
   grid.innerHTML = data.map(renderCard).join('');
-  // Only reveal the balance grid when the balance tab is active;
-  // auto-refresh runs on a timer regardless of the active tab and would
-  // otherwise overwrite the usage view's visibility.
-  if (activeTab === 'balance') grid.style.display = 'grid';
+  // Only reveal the balance grid when the balance tab is active AND
+  // the balance tab uses v1 data; auto-refresh runs on a timer regardless
+  // of the active tab and would otherwise overwrite the usage view's visibility.
+  if (activeTab === 'balance' && balanceSource === 'v1') grid.style.display = 'grid';
   bindHistoryCharts();
 }
 
@@ -1357,7 +1394,7 @@ function bindHistoryCharts() {
 
 function toggleCardView(cardKey) {
   cardViewModes[cardKey] = cardViewModes[cardKey] === 'history' ? 'usage' : 'history';
-  if (activeTab === 'balance-v2') renderV2Grid(latestV2Data);
+  if (activeTab === 'balance-v2' || (activeTab === 'balance' && balanceSource === 'v2')) renderV2Grid(latestV2Data);
   else renderGrid(latestUsageData);
 }
 
@@ -1549,13 +1586,15 @@ function renderV2Grid(data) {
     return;
   }
   grid.innerHTML = data.map(renderCard).join('');
-  if (activeTab === 'balance-v2') grid.style.display = 'grid';
+  if (activeTab === 'balance-v2' || (activeTab === 'balance' && balanceSource === 'v2')) grid.style.display = 'grid';
   bindHistoryCharts();
 }
 
-refresh();
 setInterval(() => {
-  if (activeTab === 'balance') refresh();
+  if (activeTab === 'balance') {
+    if (balanceSource === 'v2') refreshV2();
+    else refresh();
+  }
   else if (activeTab === 'balance-v2') refreshV2();
 }, 60000);
 setInterval(() => { if (activeTab === 'usage') refreshUsageChart(); }, 60000);

@@ -54,6 +54,13 @@ class TestV2Status:
         data = resp.json()
         assert data["enabled"] is True
         assert data["config_error"] is None
+        assert "v1_has_providers" in data
+
+    def test_v1_has_providers_false_when_empty(self, client: TestClient):
+        """The test fixture uses an empty old config, so v1_has_providers should be False."""
+        resp = client.get("/api/status/v2")
+        data = resp.json()
+        assert data["v1_has_providers"] is False
 
 
 class TestV2Usage:
@@ -165,7 +172,9 @@ class TestV2Disabled:
         with TestClient(app) as c:
             resp = c.get("/api/status/v2")
             assert resp.status_code == 200
-            assert resp.json()["enabled"] is False
+            data = resp.json()
+            assert data["enabled"] is False
+            assert data["v1_has_providers"] is False  # empty old config
 
             resp = c.get("/api/usage/v2")
             assert resp.status_code == 200

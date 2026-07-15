@@ -873,9 +873,18 @@ async def get_usage_v2():
 
 @app.get("/api/status/v2")
 async def get_status_v2():
+    v1_has_providers = False
+    try:
+        config = load_config(_config_path)
+        v1_has_providers = len(config.providers) > 0
+    except Exception:
+        pass
+
     if _v2_manager is None:
-        return {"enabled": False, "last_updated": None, "config_error": None}
-    return _v2_manager.get_status()
+        return {"enabled": False, "last_updated": None, "config_error": None, "v1_has_providers": v1_has_providers}
+    status = _v2_manager.get_status()
+    status["v1_has_providers"] = v1_has_providers
+    return status
 
 
 @app.post("/api/push/v2/{instance_id}")
