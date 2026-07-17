@@ -984,11 +984,20 @@ function renderUsageTable() {
 async function refreshUsageChart() {
   const container = document.getElementById('usage-chart-container');
   refreshStaleSources();
+  // The global header placeholders are only cleared by the balance-tab
+  // refresh paths; when the page loads straight into the usage tab this is
+  // the only fetch that runs, so it must resolve them too.
+  const statusPromise = fetch('/api/status').then(r => r.json()).catch(() => null);
   try {
     const resp = await fetch(`/api/usage/timeseries?days=${usageRange}`);
     const data = await resp.json();
     renderUsageChart(data);
+    document.getElementById('loading').style.display = 'none';
+    const status = await statusPromise;
+    document.getElementById('updated').textContent =
+      status && status.last_updated ? `最后更新：${status.last_updated}` : '';
   } catch (e) {
+    document.getElementById('loading').style.display = 'none';
     if (container) container.innerHTML = `<div class="empty-usage">加载失败：${escapeHtml(e.message)}</div>`;
   }
 }

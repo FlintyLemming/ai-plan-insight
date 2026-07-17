@@ -143,3 +143,14 @@ def test_usage_table_pagination_controls_present():
 def test_usage_table_empty_state_message_present():
     h = read_index()
     assert "usage-table-empty" in h
+
+
+def test_usage_refresh_clears_global_loading_indicators():
+    # Loading directly into the usage tab must clear the header placeholders
+    # ("加载中..." / "正在获取数据..."), which are otherwise only handled by the
+    # balance-tab refresh paths.
+    h = read_index()
+    fn = h[h.index("async function refreshUsageChart"):h.index("function renderStaleSources")]
+    assert "getElementById('loading')" in fn
+    assert "getElementById('updated')" in fn
+    assert "last_updated" in fn
