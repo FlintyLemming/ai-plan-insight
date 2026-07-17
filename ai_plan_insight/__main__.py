@@ -11,7 +11,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         default=None,
-        help="Path to configuration file (default: ~/.ai_plan_insight.json)",
+        help="Path to configuration file (default: config.json in the project root)",
     )
     parser.add_argument(
         "--usage-db",
@@ -97,7 +97,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         print(
-            "\nPlease create a config file at ~/.ai_plan_insight.json",
+            "\nPlease create a config file and pass it via --config",
             file=sys.stderr,
         )
         sys.exit(1)
