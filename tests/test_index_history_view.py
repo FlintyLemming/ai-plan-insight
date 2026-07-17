@@ -35,7 +35,7 @@ def test_index_limits_history_button_to_glm_providers():
     html = read_index()
 
     assert "GLM Coding Plan" in html
-    assert "白嫖 GLM Coding Plan 国际版" in html
+    assert "GLM Coding Plan 国际版" in html
     assert "GLM_HISTORY_PROVIDERS.has(data.provider)" in html
 
 

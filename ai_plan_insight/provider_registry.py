@@ -41,7 +41,7 @@ _TYPE_DISPLAY_NAMES: dict[str, str] = {
     "huawei_cloud": "华为云余额",
     "zenmux": "ZenMux",
     "codex": "自购 Codex 中转站",
-    "codex_security": "白嫖 Codex Security 中转",
+    "codex_security": "Codex Sub2API 中转",
     "antigravity": "Antigravity",
     "volcengine_ark": "火山方舟 Coding Plan",
     "cursor": "Cursor",

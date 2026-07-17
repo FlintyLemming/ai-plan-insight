@@ -9,4 +9,4 @@ class BigModelInternationalProvider(BigModelProvider):
 
     @property
     def name(self) -> str:
-        return "白嫖 GLM Coding Plan 国际版"
+        return "GLM Coding Plan 国际版"

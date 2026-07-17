@@ -133,7 +133,7 @@ class CodexSecurityProvider(CodexProvider):
 
     @property
     def name(self) -> str:
-        return "白嫖 Codex Security 中转"
+        return "Codex Sub2API 中转"
 
     def _parse_unrestricted(self, raw_data: dict) -> UsageInfo:
         balance = float(raw_data.get("balance", raw_data.get("remaining", 0)) or 0)
