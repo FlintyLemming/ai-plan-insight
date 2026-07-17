@@ -208,7 +208,7 @@ _PROVIDER_DISPLAY_NAMES = {
     "huawei_cloud": "华为云余额",
     "zenmux": "ZenMux",
     "codex": "自购 Codex 中转站",
-    "codex_security": "Codex Sub2API 中转",
+    "codex_sub2api": "Codex Sub2API 中转",
     "antigravity": "Antigravity",
     "volcengine_ark": "火山方舟 Coding Plan",
     "cursor": "Cursor",
@@ -234,7 +234,7 @@ def _build_provider(name: str, config: ProviderConfig):
             return ZenMuxProvider(config)
         case "codex":
             return CodexProvider(config)
-        case "codex_security":
+        case "codex_sub2api":
             return CodexSecurityProvider(config)
         case "antigravity":
             return AntigravityProvider(config)

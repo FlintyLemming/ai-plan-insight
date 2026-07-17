@@ -74,7 +74,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
                 provider = HuaweiCloudBssProvider(provider_config)
             case "codex":
                 provider = CodexProvider(provider_config)
-            case "codex_security":
+            case "codex_sub2api":
                 provider = CodexSecurityProvider(provider_config)
             case "antigravity":
                 provider = AntigravityProvider(provider_config)
