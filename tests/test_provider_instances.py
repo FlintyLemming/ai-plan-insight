@@ -196,5 +196,6 @@ class TestGetUsageV2:
         assert card["instance_id"] == "claude-work"
         assert card["type"] == "claude"
         assert card["instance_label"] == "工作号"
+        assert card["type_display_name"] == "Claude 订阅"
         assert card["provider"] == "Claude 订阅 · 工作号"
         assert len(card["limits"]) == 2

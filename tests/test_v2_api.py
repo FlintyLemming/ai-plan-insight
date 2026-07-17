@@ -138,6 +138,7 @@ class TestV2Push:
             assert "instance_id" in d
             assert "type" in d
             assert "instance_label" in d
+            assert "type_display_name" in d
 
     def test_push_ordering(self, client: TestClient):
         for inst_id in ["claude-work", "claude-personal"]:

@@ -320,6 +320,7 @@ class V2RuntimeManager:
                     d["instance_id"] = iid
                     d["type"] = cfg.type
                     d["instance_label"] = cfg.label
+                    d["type_display_name"] = get_type_display_name(cfg.type)
                     break
             result.append(d)
         return result

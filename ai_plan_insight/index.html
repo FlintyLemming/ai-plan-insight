@@ -42,8 +42,14 @@
   .card-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: flex-start;
     margin-bottom: 1.25rem;
+  }
+  .card-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
   }
   .card-title {
     font-size: 1.15rem;
@@ -52,6 +58,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .card-type-label {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .card-subtitle { font-size: 0.8rem; color: #94a3b8; }
   .card-header-right {
@@ -1324,10 +1337,14 @@ function renderHeader(data, subtitle) {
   const toggle = canToggle
     ? `<button class="view-toggle" data-view-toggle="${cardKey}" onclick="toggleCardView('${cardKey.replace(/'/g, "\\'")}')">${mode === 'history' ? '用量' : '历史'}</button>`
     : '';
+  const isV2 = !!data.instance_label;
+  const titleHtml = isV2
+    ? `<div class="card-title-group"><span class="card-title">${data.type_display_name || ''}</span><span class="card-type-label">${data.instance_label}</span></div>`
+    : `<span class="card-title">${data.provider}</span>`;
   const right = subtitle || toggle
     ? `<span class="card-header-right">${subtitle ? `<span class="card-subtitle">${subtitle}</span>` : ''}${toggle}</span>`
     : '';
-  return `<div class="card-header"><span class="card-title">${data.provider}</span>${right}</div>`;
+  return `<div class="card-header">${titleHtml}${right}</div>`;
 }
 
 function renderGrid(data) {
