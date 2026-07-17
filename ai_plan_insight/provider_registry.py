@@ -36,7 +36,7 @@ from .providers.base import BaseProvider
 _TYPE_DISPLAY_NAMES: dict[str, str] = {
     "kimi": "Kimi Coding Plan",
     "bigmodel": "GLM Coding Plan",
-    "bigmodel_international": "白嫖 GLM Coding Plan 国际版",
+    "bigmodel_international": "GLM Coding Plan 国际版",
     "aiping": "AIPing",
     "huawei_cloud": "华为云余额",
     "zenmux": "ZenMux",
