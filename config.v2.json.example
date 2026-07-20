@@ -18,6 +18,12 @@
       "label": "个人账号",
       "api_key": "YOUR_BIGMODEL_API_KEY",
       "order": 20
+    },
+    "qianwen-personal": {
+      "type": "qianwen",
+      "mode": "push",
+      "label": "个人版",
+      "order": 26
     }
   },
   "push_auth_secret": "your-secret-token",

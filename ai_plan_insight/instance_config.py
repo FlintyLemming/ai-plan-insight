@@ -33,6 +33,7 @@ _SUPPORTED_TYPES: dict[str, set[str]] = {
     "grok": {"push"},
     "cursor": {"push"},
     "mimo_token_plan": {"push"},
+    "qianwen": {"push"},
 }
 
 # Credential fields each type is allowed to carry (beyond type/mode/label/order).

@@ -20,6 +20,7 @@ from .api_schemas import (
     MimoPushRequest,
     ClaudePushRequest,
     GrokPushRequest,
+    QianwenPushRequest,
 )
 from .providers.kimi import KimiProvider
 from .providers.bigmodel import BigModelProvider
@@ -48,6 +49,7 @@ _TYPE_DISPLAY_NAMES: dict[str, str] = {
     "claude": "Claude 订阅",
     "grok": "Grok 订阅",
     "mimo_token_plan": "小米 MiMo Token Plan",
+    "qianwen": "千问 Token Plan",
 }
 
 
@@ -165,6 +167,57 @@ def _convert_mimo(instance_id: str, title: str, payload: MimoPushRequest) -> Usa
     )
 
 
+def _convert_qianwen(instance_id: str, title: str, payload: QianwenPushRequest) -> UsageResponse:
+    from .api_schemas import QianwenWindowPush
+
+    def window(duration: int, time_unit: str, w: QianwenWindowPush | None) -> LimitResponse | None:
+        if w is None:
+            return None
+        # Prefer absolute Credits; fall back to a 0-100 percentage meter.
+        if w.limit is not None and w.used is not None:
+            limit_val = w.limit
+            used_val = w.used
+            remaining_val = w.remaining if w.remaining is not None else max(limit_val - used_val, 0)
+            return LimitResponse(
+                duration=duration, time_unit=time_unit,
+                limit=_fmt_num(limit_val), used=_fmt_num(used_val),
+                remaining=_fmt_num(remaining_val),
+            )
+        if w.used_percentage is not None:
+            pct = w.used_percentage
+            return LimitResponse(
+                duration=duration, time_unit=time_unit, limit="100",
+                used=f"{pct:.2f}", remaining=f"{100 - pct:.2f}", limit_type="PERCENT",
+            )
+        return None
+
+    limits = [
+        lim for lim in (
+            window(5, "小时", payload.five_hour),
+            window(7, "天", payload.seven_day),
+        ) if lim is not None
+    ]
+
+    balances: dict[str, str] = {}
+    if payload.expires_at:
+        # Keep only the date part (payload is a 北京时间 string like "2026-08-20 00:00:00+0800").
+        balances["到期时间"] = payload.expires_at.split(" ")[0]
+    if payload.remaining_days is not None:
+        balances["剩余天数"] = f"{payload.remaining_days} 天"
+
+    return UsageResponse(
+        provider=title,
+        membership_level=payload.plan,
+        limits=limits,
+        balances=balances,
+    )
+
+
+def _fmt_num(v: float) -> str:
+    """Render a number without a trailing .0 for whole values."""
+    return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+
+
 def _convert_antigravity(instance_id: str, title: str, payload: AntigravityPushRequest) -> UsageResponse:
     return UsageResponse(
         provider=title,
@@ -201,6 +254,7 @@ _PUSH_REQUEST_MODELS: dict[str, Type] = {
     "cursor": CursorPushRequest,
     "mimo_token_plan": MimoPushRequest,
     "antigravity": AntigravityPushRequest,
+    "qianwen": QianwenPushRequest,
 }
 
 _PUSH_CONVERTERS = {
@@ -209,6 +263,7 @@ _PUSH_CONVERTERS = {
     "cursor": _convert_cursor,
     "mimo_token_plan": _convert_mimo,
     "antigravity": _convert_antigravity,
+    "qianwen": _convert_qianwen,
 }
 
 
