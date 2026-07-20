@@ -80,23 +80,30 @@ def _to_provider_config(inst: V2InstanceConfig) -> ProviderConfig:
 
 
 def _convert_claude(instance_id: str, title: str, payload: ClaudePushRequest) -> UsageResponse:
-    return UsageResponse(
-        provider=title,
-        limits=[
+    limits = [
+        LimitResponse(
+            duration=5, time_unit="小时", limit="100",
+            used=str(int(payload.five_hour.utilization)),
+            remaining=str(int(100 - payload.five_hour.utilization)),
+            reset_time=payload.five_hour.resets_at,
+        ),
+        LimitResponse(
+            duration=7, time_unit="天", limit="100",
+            used=str(int(payload.seven_day.utilization)),
+            remaining=str(int(100 - payload.seven_day.utilization)),
+            reset_time=payload.seven_day.resets_at,
+        ),
+    ]
+    if payload.fable is not None:
+        limits.append(
             LimitResponse(
-                duration=5, time_unit="小时", limit="100",
-                used=str(int(payload.five_hour.utilization)),
-                remaining=str(int(100 - payload.five_hour.utilization)),
-                reset_time=payload.five_hour.resets_at,
-            ),
-            LimitResponse(
-                duration=7, time_unit="天", limit="100",
-                used=str(int(payload.seven_day.utilization)),
-                remaining=str(int(100 - payload.seven_day.utilization)),
-                reset_time=payload.seven_day.resets_at,
-            ),
-        ],
-    )
+                duration=7, time_unit="天（Fable）", limit="100",
+                used=str(int(payload.fable.utilization)),
+                remaining=str(int(100 - payload.fable.utilization)),
+                reset_time=payload.fable.resets_at,
+            )
+        )
+    return UsageResponse(provider=title, limits=limits)
 
 
 def _convert_grok(instance_id: str, title: str, payload: GrokPushRequest) -> UsageResponse:

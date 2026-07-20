@@ -93,6 +93,9 @@ class ClaudeWindowPush(BaseModel):
 class ClaudePushRequest(BaseModel):
     seven_day: ClaudeWindowPush
     five_hour: ClaudeWindowPush
+    # Model-scoped weekly window (e.g. Fable). Optional so pushers that predate
+    # it still validate and produce the original two-window card.
+    fable: ClaudeWindowPush | None = None
 
 
 class GrokWindowPush(BaseModel):

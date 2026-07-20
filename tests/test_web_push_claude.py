@@ -80,6 +80,32 @@ def test_usage_returns_two_claude_limits_after_push(tmp_path, monkeypatch):
     assert seven["limit_type"] == ""
 
 
+def test_usage_appends_fable_limit_when_pushed(tmp_path, monkeypatch):
+    _reset_push_state(tmp_path, monkeypatch)
+    client = TestClient(web.app)
+
+    payload = {
+        **VALID_PAYLOAD,
+        "fable": {"utilization": 44.0, "resets_at": "2026-07-26T07:00:00Z"},
+    }
+    client.post("/api/push/claude", json=payload)
+    resp = client.get("/api/usage")
+
+    assert resp.status_code == 200
+    providers = [u for u in resp.json() if u["provider"] == "Claude 订阅"]
+    assert len(providers) == 1
+    limits = providers[0]["limits"]
+    assert len(limits) == 3
+
+    fable = limits[2]
+    assert fable["duration"] == 7
+    assert fable["time_unit"] == "天（Fable）"
+    assert fable["limit"] == "100"
+    assert fable["used"] == "44"
+    assert fable["remaining"] == "56"
+    assert fable["reset_time"] == "2026-07-26T07:00:00Z"
+
+
 def test_expired_push_is_not_returned(tmp_path, monkeypatch):
     _reset_push_state(tmp_path, monkeypatch)
     client = TestClient(web.app)

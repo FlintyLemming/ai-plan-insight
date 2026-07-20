@@ -564,26 +564,38 @@ async def push_mimo(req: MimoPushRequest, request: Request):
 async def push_claude(req: ClaudePushRequest, request: Request):
     _handle_push_auth(request, "claude")
     global _last_updated, _pushed_results, _pushed_at
-    _pushed_results["claude"] = UsageResponse(
-        provider="Claude 订阅",
-        limits=[
-            LimitResponse(
-                duration=5,
-                time_unit="小时",
-                limit="100",
-                used=str(int(req.five_hour.utilization)),
-                remaining=str(int(100 - req.five_hour.utilization)),
-                reset_time=req.five_hour.resets_at,
-            ),
+    claude_limits = [
+        LimitResponse(
+            duration=5,
+            time_unit="小时",
+            limit="100",
+            used=str(int(req.five_hour.utilization)),
+            remaining=str(int(100 - req.five_hour.utilization)),
+            reset_time=req.five_hour.resets_at,
+        ),
+        LimitResponse(
+            duration=7,
+            time_unit="天",
+            limit="100",
+            used=str(int(req.seven_day.utilization)),
+            remaining=str(int(100 - req.seven_day.utilization)),
+            reset_time=req.seven_day.resets_at,
+        ),
+    ]
+    if req.fable is not None:
+        claude_limits.append(
             LimitResponse(
                 duration=7,
-                time_unit="天",
+                time_unit="天（Fable）",
                 limit="100",
-                used=str(int(req.seven_day.utilization)),
-                remaining=str(int(100 - req.seven_day.utilization)),
-                reset_time=req.seven_day.resets_at,
-            ),
-        ],
+                used=str(int(req.fable.utilization)),
+                remaining=str(int(100 - req.fable.utilization)),
+                reset_time=req.fable.resets_at,
+            )
+        )
+    _pushed_results["claude"] = UsageResponse(
+        provider="Claude 订阅",
+        limits=claude_limits,
     )
     _persist_usage_snapshot(_pushed_results["claude"], "push")
     now = datetime.now().astimezone()
