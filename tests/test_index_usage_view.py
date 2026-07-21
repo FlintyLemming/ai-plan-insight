@@ -145,6 +145,31 @@ def test_usage_table_empty_state_message_present():
     assert "usage-table-empty" in h
 
 
+def test_balance_tab_always_v2():
+    h = read_index()
+    assert "balance-v2" not in h  # no balance-v2 tab anymore
+    assert "balanceSource" not in h  # variable removed
+
+
+def test_balance_refresh_uses_v2():
+    h = read_index()
+    # balance tab triggers refreshV2; old /api/usage (v1) no longer referenced
+    assert "/api/usage/v2" in h
+    assert "refreshV2" in h
+
+
+def test_usage_chart_uses_status_v2():
+    h = read_index()
+    assert "/api/status/v2" in h
+    # v1 status endpoint no longer referenced from the page
+    assert "fetch('/api/status')" not in h and 'fetch("/api/status")' not in h
+
+
+def test_instance_errors_banner_present():
+    h = read_index()
+    assert "instance_errors" in h
+
+
 def test_usage_refresh_clears_global_loading_indicators():
     # Loading directly into the usage tab must clear the header placeholders
     # ("加载中..." / "正在获取数据..."), which are otherwise only handled by the

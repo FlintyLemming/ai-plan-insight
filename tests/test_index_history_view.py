@@ -14,7 +14,7 @@ def test_index_contains_glm_history_view_state_and_toggle():
 
     assert "GLM_HISTORY_PROVIDERS" in html
     assert "cardViewModes" in html
-    assert "latestUsageData" in html
+    assert "latestV2Data" in html
     assert "toggleCardView" in html
     assert "data-view-toggle" in html
     assert "历史" in html

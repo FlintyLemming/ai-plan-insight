@@ -598,48 +598,16 @@ const TIME_UNIT_LABELS = {
 
 const TAB_KEY = 'ai-plan-insight:tab';
 let activeTab = localStorage.getItem(TAB_KEY) || 'balance';
-let balanceSource = 'v1'; // 'v1' or 'v2' — which API the "balance" tab fetches from
 
 async function initTabs() {
-  try {
-    const status = await fetch('/api/status/v2').then(r => r.json());
-    const v2Enabled = status.enabled;
-    const v1HasProviders = status.v1_has_providers;
-
-    if (v2Enabled && v1HasProviders) {
-      // Both sources: insert "订阅余额（新）" tab, balance tab stays v1
-      balanceSource = 'v1';
-      const tabBar = document.querySelector('.tab-bar');
-      const usageBtn = tabBar.querySelector('[data-tab="usage"]');
-      const v2Btn = document.createElement('button');
-      v2Btn.className = 'tab';
-      v2Btn.setAttribute('data-tab', 'balance-v2');
-      v2Btn.textContent = '订阅余额（新）';
-      v2Btn.addEventListener('click', () => applyTab('balance-v2'));
-      tabBar.insertBefore(v2Btn, usageBtn);
-    } else if (v2Enabled && !v1HasProviders) {
-      // Only v2: "订阅余额" tab uses v2 data directly
-      balanceSource = 'v2';
-    }
-    // else: v2 not enabled, balanceSource stays 'v1'
-  } catch (e) {
-    // v2 endpoint unreachable, stay on v1
-  }
-
-  // Re-bind tab click handlers (for statically defined buttons)
   document.querySelectorAll('.tab').forEach(btn => {
-    if (!btn._v2bound) {
-      btn.addEventListener('click', () => applyTab(btn.getAttribute('data-tab')));
-      btn._v2bound = true;
-    }
+    btn.addEventListener('click', () => applyTab(btn.getAttribute('data-tab')));
   });
-
   applyTab(activeTab);
 }
 
 function applyTab(tab) {
-  // Validate tab value; fall back to 'balance' for unknown values
-  const validTabs = ['balance', 'balance-v2', 'usage'];
+  const validTabs = ['balance', 'usage'];
   if (!validTabs.includes(tab)) tab = 'balance';
   activeTab = tab;
   localStorage.setItem(TAB_KEY, tab);
@@ -648,13 +616,9 @@ function applyTab(tab) {
   });
   const grid = document.getElementById('grid');
   const usageView = document.getElementById('usage-chart-view');
-  grid.style.display = (tab === 'balance' || tab === 'balance-v2') ? 'grid' : 'none';
+  grid.style.display = (tab === 'balance') ? 'grid' : 'none';
   usageView.style.display = (tab === 'usage') ? 'block' : 'none';
-  if (tab === 'balance') {
-    if (balanceSource === 'v2') refreshV2();
-    else refresh();
-  }
-  else if (tab === 'balance-v2') refreshV2();
+  if (tab === 'balance') refreshV2();
   else if (tab === 'usage') refreshUsageChart();
 }
 
@@ -1000,7 +964,7 @@ async function refreshUsageChart() {
   // The global header placeholders are only cleared by the balance-tab
   // refresh paths; when the page loads straight into the usage tab this is
   // the only fetch that runs, so it must resolve them too.
-  const statusPromise = fetch('/api/status').then(r => r.json()).catch(() => null);
+  const statusPromise = fetch('/api/status/v2').then(r => r.json()).catch(() => null);
   try {
     const resp = await fetch(`/api/usage/timeseries?days=${usageRange}`);
     const data = await resp.json();
@@ -1126,7 +1090,6 @@ const TOKEN_PERIOD_LABELS = {
 const GLM_HISTORY_PROVIDERS = new Set(['GLM Coding Plan', 'GLM Coding Plan 国际版']);
 const HISTORY_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#e879f9'];
 const cardViewModes = {};
-let latestUsageData = [];
 
 function hasHistoryUsage(data) {
   return GLM_HISTORY_PROVIDERS.has(data.provider) && data.history_usage;
@@ -1350,10 +1313,7 @@ function renderHeader(data, subtitle) {
 function renderGrid(data) {
   const grid = document.getElementById('grid');
   grid.innerHTML = data.map(renderCard).join('');
-  // Only reveal the balance grid when the balance tab is active AND
-  // the balance tab uses v1 data; auto-refresh runs on a timer regardless
-  // of the active tab and would otherwise overwrite the usage view's visibility.
-  if (activeTab === 'balance' && balanceSource === 'v1') grid.style.display = 'grid';
+  if (activeTab === 'balance') grid.style.display = 'grid';
   bindHistoryCharts();
 }
 
@@ -1361,8 +1321,7 @@ function bindHistoryCharts() {
   const charts = document.querySelectorAll('[data-history-chart]');
   charts.forEach(chartEl => {
     const cardKey = chartEl.getAttribute('data-history-chart');
-    const data = latestUsageData.find(d => d.provider === cardKey)
-      || latestV2Data.find(d => (d.instance_id || d.provider) === cardKey);
+    const data = latestV2Data.find(d => (d.instance_id || d.provider) === cardKey);
     if (!data || !data.history_usage) return;
 
     const history = data.history_usage;
@@ -1420,8 +1379,7 @@ function bindHistoryCharts() {
 
 function toggleCardView(cardKey) {
   cardViewModes[cardKey] = cardViewModes[cardKey] === 'history' ? 'usage' : 'history';
-  if (activeTab === 'balance-v2' || (activeTab === 'balance' && balanceSource === 'v2')) renderV2Grid(latestV2Data);
-  else renderGrid(latestUsageData);
+  renderV2Grid(latestV2Data);
 }
 
 function formatTokens(n) {
@@ -1558,24 +1516,24 @@ function renderCard(data) {
     </div>`;
 }
 
-async function refresh() {
-  try {
-    const [data, status] = await Promise.all([
-      fetch('/api/usage').then(r => r.json()),
-      fetch('/api/status').then(r => r.json()),
-    ]);
-
-    latestUsageData = data;
-    renderGrid(latestUsageData);
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('updated').textContent =
-      status.last_updated ? `最后更新：${status.last_updated}` : '';
-  } catch (e) {
-    document.getElementById('loading').textContent = `加载失败：${e.message}`;
-  }
-}
-
 let latestV2Data = [];
+
+function renderInstanceErrors(instanceErrors) {
+  const grid = document.getElementById('grid');
+  let banner = document.getElementById('instance-errors-banner');
+  const keys = Object.keys(instanceErrors || {});
+  if (!keys.length) {
+    if (banner) banner.remove();
+    return;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'instance-errors-banner';
+    banner.style.cssText = 'grid-column:1/-1;font-size:0.8rem;color:#fca5a5;padding:0.4rem 0.6rem;';
+    grid.prepend(banner);
+  }
+  banner.textContent = `${keys.length} 个实例配置错误已忽略，详见 /api/status/v2`;
+}
 
 async function refreshV2() {
   try {
@@ -1595,6 +1553,7 @@ async function refreshV2() {
     }
     latestV2Data = data;
     renderV2Grid(data);
+    renderInstanceErrors(status.instance_errors || {});
     document.getElementById('loading').style.display = 'none';
     const updatedEl = document.querySelector('.updated');
     if (updatedEl && status.last_updated) {
@@ -1612,17 +1571,11 @@ function renderV2Grid(data) {
     return;
   }
   grid.innerHTML = data.map(renderCard).join('');
-  if (activeTab === 'balance-v2' || (activeTab === 'balance' && balanceSource === 'v2')) grid.style.display = 'grid';
+  if (activeTab === 'balance') grid.style.display = 'grid';
   bindHistoryCharts();
 }
 
-setInterval(() => {
-  if (activeTab === 'balance') {
-    if (balanceSource === 'v2') refreshV2();
-    else refresh();
-  }
-  else if (activeTab === 'balance-v2') refreshV2();
-}, 60000);
+setInterval(() => { if (activeTab === 'balance') refreshV2(); }, 60000);
 setInterval(() => { if (activeTab === 'usage') refreshUsageChart(); }, 60000);
 </script>
 </body>
