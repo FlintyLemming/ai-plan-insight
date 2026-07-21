@@ -2,8 +2,7 @@ import json
 from pathlib import Path
 
 from .config import Config, ProviderConfig
-
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+from .instance_config import DEFAULT_CONFIG_PATH  # re-export for existing importers
 
 
 def load_config(path: str | None = None) -> Config:

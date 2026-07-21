@@ -216,3 +216,35 @@ class TestResolveV2ConfigPath:
         from ai_plan_insight.config_loader import DEFAULT_CONFIG_PATH
         result = resolve_v2_config_path(None, config_path=None)
         assert result == DEFAULT_CONFIG_PATH.parent / "config.v2.json"
+
+
+class TestV2ConfigAliases:
+    def test_model_aliases_default_empty(self):
+        cfg = V2Config(providers={})
+        assert cfg.model_aliases == {}
+
+    def test_alias_lookup_reverses_arrays(self):
+        cfg = V2Config(
+            providers={},
+            model_aliases={
+                "GLM 5.2": ["glm-5.2", "glm5.2"],
+                "GPT 5.2": ["gpt-5.2"],
+            },
+        )
+        assert cfg.alias_lookup == {
+            "glm-5.2": "GLM 5.2",
+            "glm5.2": "GLM 5.2",
+            "gpt-5.2": "GPT 5.2",
+        }
+
+    def test_alias_lookup_empty_when_no_aliases(self):
+        assert V2Config(providers={}).alias_lookup == {}
+
+    def test_alias_lookup_duplicate_raw_id_last_wins(self):
+        cfg = V2Config(providers={}, model_aliases={"A": ["x"], "B": ["x"]})
+        assert cfg.alias_lookup["x"] == "B"
+
+    def test_default_config_path_points_to_repo_root_config(self):
+        from ai_plan_insight.instance_config import DEFAULT_CONFIG_PATH
+        assert DEFAULT_CONFIG_PATH.name == "config.json"
+        assert DEFAULT_CONFIG_PATH.parent.name != "ai_plan_insight"

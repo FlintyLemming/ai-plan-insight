@@ -11,9 +11,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .config_loader import DEFAULT_CONFIG_PATH
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
 _INSTANCE_ID_RE = re.compile(r"[A-Za-z0-9._-]+")
 
@@ -111,8 +111,23 @@ class V2Config(BaseModel):
     model_config = {"extra": "forbid"}
 
     providers: dict[str, V2InstanceConfig]
+    model_aliases: dict[str, list[str]] = Field(default_factory=dict)
     push_auth_secret: str = ""
     enforce_push_auth: bool = False
+
+    @property
+    def alias_lookup(self) -> dict[str, str]:
+        """Reverse map {raw_model_id -> canonical_label}.
+
+        Built from `model_aliases` on each call. Unknown raw ids default to
+        themselves at read time. If the same raw id appears in multiple
+        arrays, the last definition wins (dict insertion order = source order).
+        """
+        lookup: dict[str, str] = {}
+        for label, raw_ids in self.model_aliases.items():
+            for raw_id in raw_ids:
+                lookup[raw_id] = label
+        return lookup
 
 
 def resolve_v2_config_path(
