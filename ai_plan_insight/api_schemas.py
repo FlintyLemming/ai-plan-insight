@@ -119,14 +119,15 @@ class GrokPushRequest(BaseModel):
 class QianwenWindowPush(BaseModel):
     """One rolling usage window of 千问 Token Plan.
 
-    Prefers absolute Credits (limit/used/remaining). When the quota-config
-    lookup fails the pusher may omit those and send only used_percentage; the
-    converter then falls back to a 0-100 percentage meter.
+    Preferred path: used_percentage (0-100 consumed) + optional resets_at.
+    Legacy absolute Credits (limit/used/remaining) still accepted for older agents.
     """
+    used_percentage: float | None = None
+    resets_at: str | None = None
+    # Legacy absolute Credits — ignored when used_percentage is present.
     limit: float | None = None
     used: float | None = None
     remaining: float | None = None
-    used_percentage: float | None = None
 
 
 class QianwenPushRequest(BaseModel):

@@ -173,7 +173,14 @@ def _convert_qianwen(instance_id: str, title: str, payload: QianwenPushRequest) 
     def window(duration: int, time_unit: str, w: QianwenWindowPush | None) -> LimitResponse | None:
         if w is None:
             return None
-        # Prefer absolute Credits; fall back to a 0-100 percentage meter.
+        # Prefer 0-100 percentage meter (+ optional reset); legacy absolute Credits fallback.
+        if w.used_percentage is not None:
+            pct = w.used_percentage
+            return LimitResponse(
+                duration=duration, time_unit=time_unit, limit="100",
+                used=f"{pct:.2f}", remaining=f"{100 - pct:.2f}",
+                reset_time=w.resets_at, limit_type="PERCENT",
+            )
         if w.limit is not None and w.used is not None:
             limit_val = w.limit
             used_val = w.used
@@ -182,12 +189,7 @@ def _convert_qianwen(instance_id: str, title: str, payload: QianwenPushRequest) 
                 duration=duration, time_unit=time_unit,
                 limit=_fmt_num(limit_val), used=_fmt_num(used_val),
                 remaining=_fmt_num(remaining_val),
-            )
-        if w.used_percentage is not None:
-            pct = w.used_percentage
-            return LimitResponse(
-                duration=duration, time_unit=time_unit, limit="100",
-                used=f"{pct:.2f}", remaining=f"{100 - pct:.2f}", limit_type="PERCENT",
+                reset_time=w.resets_at,
             )
         return None
 

@@ -16,6 +16,7 @@ from ai_plan_insight.api_schemas import (
     CursorPushRequest,
     MimoPushRequest,
     AntigravityPushRequest,
+    QianwenPushRequest,
     UsageResponse,
 )
 
@@ -188,3 +189,37 @@ class TestConvertPushPayload:
         )
         assert resp.provider == "Antigravity · 测试"
         assert len(resp.limits) == 3
+
+    def test_qianwen_percentage_and_reset(self):
+        """千问推送：0-100 百分比 + resets_at，走 PERCENT 条，不再依赖绝对 Credits。"""
+        payload = QianwenPushRequest(
+            plan="lite",
+            status="VALID",
+            remaining_days=29,
+            auto_renew=False,
+            expires_at="2026-08-20 00:00:00+0800",
+            five_hour={
+                "used_percentage": 70.0,
+                "resets_at": "2026-07-21T15:24:00+08:00",
+            },
+            seven_day={
+                "used_percentage": 19.6,
+                "resets_at": "2026-07-28T10:24:00+08:00",
+            },
+        )
+        resp = convert_push_payload(
+            "qianwen", "qianwen-personal", "千问 Token Plan", payload,
+        )
+        assert resp.provider == "千问 Token Plan"
+        assert resp.membership_level == "lite"
+        assert len(resp.limits) == 2
+        w5, w7 = resp.limits
+        assert w5.limit_type == "PERCENT"
+        assert w5.used == "70.00"
+        assert w5.remaining == "30.00"
+        assert w5.reset_time == "2026-07-21T15:24:00+08:00"
+        assert w7.used == "19.60"
+        assert w7.remaining == "80.40"
+        assert w7.reset_time == "2026-07-28T10:24:00+08:00"
+        assert resp.balances.get("剩余天数") == "29 天"
+        assert resp.balances.get("到期时间") == "2026-08-20"
