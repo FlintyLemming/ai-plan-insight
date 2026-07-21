@@ -51,7 +51,7 @@ docker pull git.mitsea.com/flintylemming/ai-plan-insight:latest
 
 ### 运行容器
 
-准备一个配置目录（如 `~/ai-plan-insight`），放入下文的两个配置文件，然后挂载到容器：
+准备一个配置目录（如 `~/ai-plan-insight`），放入下文的配置文件 `config.json`，然后挂载到容器：
 
 ```bash
 docker run -d \
@@ -81,16 +81,15 @@ docker compose up -d
 
 | 参数 | 说明 |
 |---|---|
-| `--web` | 以 Web 服务方式运行 |
+| `--web` | 以 Web 服务方式运行（默认且唯一模式） |
 | `--host` | 监听地址，默认 `127.0.0.1` |
 | `--port` | 监听端口，默认 `8765` |
-| `--config` | 基础配置文件路径（模型用量相关配置） |
-| `--v2-config` | 订阅余额配置文件路径，默认取 `--config` 同目录下的 `config.v2.json` |
+| `--config` | 配置文件路径（订阅余额实例 + 模型用量 alias + 推送认证） |
 | `--usage-db` | SQLite 数据库路径，默认取 `--config` 同目录下的 `usage.db` |
 
-### 订阅余额配置（config.v2.json）
+### 配置（config.json）
 
-订阅余额的 Provider 实例统一在 `config.v2.json` 中声明（参考 [config.v2.json.example](config.v2.json.example)）。顶层 `providers` 是实例注册表：key 为实例 ID，值为该实例的类型、模式、标签和凭据。
+订阅余额与模型用量共用唯一配置文件 `config.json`（参考 [config.json.example](config.json.example)）。顶层 `providers` 是订阅余额的实例注册表：key 为实例 ID，值为该实例的类型、模式、标签和凭据；`model_aliases` 是「总模型用量」的模型名别名；`push_auth_secret` / `enforce_push_auth` 是两套推送接口共用的推送认证（见下文「推送认证」）。
 
 ```json
 {
@@ -122,8 +121,13 @@ docker compose up -d
       "order": 30
     }
   },
+  "model_aliases": {
+    "GLM 5.2": ["glm-5.2", "glm5.2"],
+    "GPT 5.2": ["gpt-5.2"],
+    "Claude Sonnet 4.5": ["claude-sonnet-4-5", "claude-sonnet-4-5-20250929"]
+  },
   "push_auth_secret": "your-secret-token",
-  "enforce_push_auth": true
+  "enforce_push_auth": false
 }
 ```
 
@@ -138,27 +142,19 @@ docker compose up -d
 | `order` | ❌ | 卡片显示顺序，数值越小越靠前，默认 `999`；相同 `order` 按卡片标题稳定排序 |
 | 凭据字段 | 按类型 | fetch 实例按类型填写 `api_key`、`base_url`、`access_key_id` 等，见上表；push 实例不需要凭据 |
 
-配置在启动时严格校验：未知的 `type` / `mode`、空 `label`、缺少必填凭据、出现该类型不支持的字段（例如凭据字段拼写错误）都会导致加载失败，错误信息通过 `GET /api/status/v2` 暴露。修改 `config.v2.json` 后需要重启服务生效。
-
-### 基础配置（config.json）
-
-`config.json` 保存与「总模型用量」相关的配置：
-
-```json
-{
-  "providers": {},
-  "model_aliases": {
-    "GLM 5.2": ["glm-5.2", "glm5.2"],
-    "GPT 5.2": ["gpt-5.2"],
-    "Claude Sonnet 4.5": ["claude-sonnet-4-5", "claude-sonnet-4-5-20250929"]
-  },
-  "push_auth_secret": "your-secret-token",
-  "enforce_push_auth": false
-}
-```
+配置容错加载：顶层结构错误（文件缺失、JSON 解析失败、未知顶层字段）会使整个配置不可用，通过 `GET /api/status/v2` 的 `config_error` 暴露，Web 仍可启动；单实例错误（未知 `type`、非法 `mode`、空 `label`、缺少必填凭据、出现该类型不支持的字段、非法实例 ID）只会跳过该实例并记入 `instance_errors`，其余实例正常加载与显示，余额页上方会提示被忽略的实例数量。修改 `config.json` 后下一次请求即生效，无需重启服务（基于文件修改时间的热重载）。
 
 - `model_aliases`：把不同来源上报的原始模型 ID 归并为同一个展示名，未配置的模型 ID 原样展示。
-- `push_auth_secret` / `enforce_push_auth`：`POST /api/usage/report` 的推送认证，见下文「推送认证」。
+- `push_auth_secret` / `enforce_push_auth`：`POST /api/push/v2/{instance_id}` 与 `POST /api/usage/report` 共用的推送认证，见下文「推送认证」。
+
+### 从旧版迁移（config.v2.json → config.json）
+
+若你已有 `config.v2.json` 与 `config.json` 两份配置：
+
+1. 将 `config.v2.json` 的 `providers`、`push_auth_secret`、`enforce_push_auth` 合入 `config.json`。
+2. 保留 `config.json` 的 `model_aliases`。
+3. 统一 `push_auth_secret` 为单一值，并同步给所有 push agent 与 ai-usage-agent。
+4. 删除 `config.v2.json`，重启服务（之后修改 `config.json` 无需重启）。
 
 ## 数据获取逻辑（订阅余额）
 
@@ -173,7 +169,7 @@ Web 模式下提供以下接口。
 订阅余额：
 
 - `GET /api/usage/v2` — 返回所有实例的卡片数据；未配置或配置无效时返回空数组
-- `GET /api/status/v2` — 返回 `enabled`（是否启用）、`last_updated`（最近刷新时间）、`config_error`（配置错误信息）
+- `GET /api/status/v2` — 返回 `enabled`（是否启用）、`last_updated`（最近刷新时间）、`config_error`（顶层配置错误信息）、`instance_errors`（被跳过实例的错误映射，含未知 `type`，余额页上方会提示有几个实例被忽略）
 - `POST /api/push/v2/{instance_id}` — 接收 push 实例的用量推送
 
 模型 Token 用量：
@@ -194,7 +190,7 @@ Authorization: Bearer <push_auth_secret>
 Content-Type: application/json
 ```
 
-`instance_id` 即 `config.v2.json` 中的配置 key，必须预先声明；请求 body 按实例的 `type` 使用对应的 payload 格式。错误响应：
+`instance_id` 即 `config.json` 的 `providers` 中的配置 key，必须预先声明；请求 body 按实例的 `type` 使用对应的 payload 格式。错误响应：
 
 | 状态码 | 含义 |
 |---|---|
@@ -355,10 +351,7 @@ curl -X POST http://localhost:8000/api/usage/report \
 Authorization: Bearer <push_auth_secret>
 ```
 
-两套推送接口的密钥分别配置：
-
-- `POST /api/push/v2/{instance_id}` 使用 `config.v2.json` 顶层的 `push_auth_secret`，所有 push 实例共用同一个 token。
-- `POST /api/usage/report` 使用 `config.json` 顶层的 `push_auth_secret`。
+`POST /api/push/v2/{instance_id}` 与 `POST /api/usage/report` 共用 `config.json` 顶层的唯一 `push_auth_secret`，所有 push 实例与模型用量上报使用同一个 token。
 
 `enforce_push_auth` 为 `false`（默认）时，token 缺失或错误的请求仍会被接受，只记录为未认证，便于逐个迁移客户端；全部客户端更新完毕后改为 `true`，未认证请求将返回 `401 Unauthorized`。
 

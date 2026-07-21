@@ -1,54 +1,88 @@
 {
   "providers": {
-    "kimi": {
+    "claude-personal": {
+      "type": "claude",
+      "mode": "push",
+      "label": "个人号",
+      "order": 12
+    },
+    "claude-work": {
+      "type": "claude",
+      "mode": "push",
+      "label": "工作号",
+      "order": 13
+    },
+    "bigmodel-personal": {
+      "type": "bigmodel",
+      "mode": "fetch",
+      "label": "个人账号",
+      "api_key": "YOUR_BIGMODEL_API_KEY",
+      "order": 20
+    },
+    "kimi-main": {
+      "type": "kimi",
+      "mode": "fetch",
+      "label": "主账号",
       "api_key": "YOUR_KIMI_API_KEY",
       "order": 30
     },
-    "huawei_cloud": {
+    "huawei-cloud-main": {
+      "type": "huawei_cloud",
+      "mode": "fetch",
+      "label": "主账号",
       "user_name": "YOUR_HUAWEI_CLOUD_USER_NAME",
       "access_key_id": "YOUR_HUAWEI_CLOUD_ACCESS_KEY_ID",
       "access_key_secret": "YOUR_HUAWEI_CLOUD_SECRET_ACCESS_KEY",
       "order": 35
     },
-    "bigmodel": {
-      "api_key": "YOUR_BIGMODEL_API_KEY",
-      "order": 20
-    },
-    "bigmodel_international": {
-      "api_key": "YOUR_BIGMODEL_INTERNATIONAL_API_KEY",
-      "order": 21
-    },
-    "aiping": {
-      "api_key": "YOUR_AIPING_API_KEY",
-      "order": 50
-    },
-    "zenmux": {
+    "zenmux-main": {
+      "type": "zenmux",
+      "mode": "fetch",
+      "label": "主账号",
       "api_key": "YOUR_ZENMUX_MANAGEMENT_API_KEY",
       "order": 13
     },
-    "antigravity": {
+    "antigravity-main": {
+      "type": "antigravity",
+      "mode": "fetch",
+      "label": "主账号",
       "api_key": "YOUR_ANTIGRAVITY_API_KEY",
       "base_url": "http://your-antigravity-manager:8045",
       "admin_password": "YOUR_ADMIN_PASSWORD_IF_SET",
       "order": 23
     },
-    "volcengine_ark": {
+    "volcengine-ark-main": {
+      "type": "volcengine_ark",
+      "mode": "fetch",
+      "label": "主账号",
       "access_key_id": "YOUR_VOLCENGINE_ACCESS_KEY_ID",
       "access_key_secret": "YOUR_VOLCENGINE_SECRET_ACCESS_KEY",
       "order": 22
     },
-    "mimo_token_plan": {
+    "mimo-main": {
+      "type": "mimo_token_plan",
+      "mode": "push",
+      "label": "主号",
       "cookie": "api-platform_serviceToken=...; userId=...; api-platform_slh=...; api-platform_ph=...",
       "order": 24
     },
-    "cursor": {
+    "cursor-main": {
+      "type": "cursor",
+      "mode": "push",
+      "label": "主力账号",
       "order": 25
     },
-    "grok": {
+    "grok-main": {
+      "type": "grok",
+      "mode": "push",
+      "label": "主号",
       "order": 11
     },
-    "claude": {
-      "order": 12
+    "qianwen-personal": {
+      "type": "qianwen",
+      "mode": "push",
+      "label": "个人版",
+      "order": 26
     }
   },
   "model_aliases": {
