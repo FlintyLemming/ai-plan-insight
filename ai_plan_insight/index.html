@@ -21,10 +21,12 @@
   .updated { font-size: 0.8rem; color: #64748b; margin-bottom: 2rem; }
   .grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1rem;
     width: 100%;
-    max-width: 1140px;
+    /* 容器宽度上限：4×280 + 3×1.5rem(gap) ≈ 1192px，恰好容纳 4 列、
+       放不下第 5 列，从而让 auto-fit 在宽屏自动排到最多 4 列 */
+    max-width: 1200px;
   }
   .card {
     background: #1e293b;
@@ -36,15 +38,8 @@
   @media (min-width: 640px) {
     body { padding: 2rem 1rem; }
     h1 { font-size: 1.5rem; }
-    .grid { gap: 1.5rem; grid-template-columns: repeat(2, 1fr); }
+    .grid { gap: 1.5rem; }
     .card { padding: 1.5rem; }
-  }
-  /* 订阅余额：随设备宽度自适应，最多 4 列 */
-  @media (min-width: 900px) {
-    .grid { grid-template-columns: repeat(3, 1fr); }
-  }
-  @media (min-width: 1200px) {
-    .grid { grid-template-columns: repeat(4, 1fr); }
   }
   .card-header {
     display: flex;
