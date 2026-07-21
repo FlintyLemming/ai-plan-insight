@@ -2,8 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from ai_plan_insight.config import Config
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,17 +26,18 @@ def test_web_no_longer_references_pocketbase_runtime():
     assert "task_pb" not in source
 
 
-def test_config_ignores_legacy_pocketbase_key():
-    config = Config.model_validate(
-        {
+def test_config_rejects_legacy_pocketbase_key():
+    from ai_plan_insight.instance_config import load_v2_config
+    import json
+    from pathlib import Path
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "config.json"
+        p.write_text(json.dumps({
             "providers": {},
-            "pocketbase": {
-                "url": "https://pb.example.test",
-                "email": "admin@example.test",
-                "password": "secret",
-            },
-        }
-    )
-
-    assert config.providers == {}
-    assert not hasattr(config, "pocketbase")
+            "pocketbase": {"url": "https://pb.example.test", "email": "a@b.test", "password": "s"},
+        }))
+        result = load_v2_config(str(p))
+        assert result.config_error is not None
+        assert "pocketbase" in result.config_error or "unknown top-level" in result.config_error
+        assert result.config.providers == {}

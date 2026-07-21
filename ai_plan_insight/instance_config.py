@@ -1,8 +1,9 @@
 # ai_plan_insight/instance_config.py
-"""v2 provider instance configuration.
+"""Provider instance configuration.
 
-Separate from the old config.py / config_loader.py. The old Config / ProviderConfig
-models and the old load_config() function are not touched.
+The single source of truth for config.json: provider instances, model
+aliases, and push auth. config.py only keeps the ProviderConfig credential
+value object used to construct providers.
 """
 from __future__ import annotations
 
