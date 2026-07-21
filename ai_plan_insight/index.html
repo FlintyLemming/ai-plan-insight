@@ -20,13 +20,17 @@
   h1 { font-size: 1.35rem; margin-bottom: 0.25rem; }
   .updated { font-size: 0.8rem; color: #64748b; margin-bottom: 2rem; }
   .grid {
+    --balance-card-width: 364px;
+    --balance-grid-gap: 1rem;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--balance-grid-gap);
     width: 100%;
-    /* 容器宽度上限：4×280 + 3×1.5rem(gap) ≈ 1192px，恰好容纳 4 列、
-       放不下第 5 列，从而让 auto-fit 在宽屏自动排到最多 4 列 */
-    max-width: 1200px;
+    max-width: calc(4 * var(--balance-card-width) + 3 * var(--balance-grid-gap));
+    justify-content: center;
+  }
+  @media (min-width: 388px) {
+    .grid { grid-template-columns: repeat(auto-fit, var(--balance-card-width)); }
   }
   .card {
     background: #1e293b;
@@ -38,7 +42,7 @@
   @media (min-width: 640px) {
     body { padding: 2rem 1rem; }
     h1 { font-size: 1.5rem; }
-    .grid { gap: 1.5rem; }
+    .grid { --balance-grid-gap: 1.5rem; }
     .card { padding: 1.5rem; }
   }
   .card-header {
