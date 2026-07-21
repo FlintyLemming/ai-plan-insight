@@ -67,9 +67,15 @@ YESTERDAY = (datetime.now(UTC8).date() - timedelta(days=1)).isoformat()
 @pytest.fixture
 def usage_db(tmp_path, monkeypatch):
     """Point web at a temp DB and initialize the schema."""
+    import json
+    from ai_plan_insight.config_service import ConfigService
+
     db = tmp_path / "usage.db"
     monkeypatch.setattr(web, "_usage_db_path", db)
     usage_store.init_db(db)
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"providers": {}}))
+    monkeypatch.setattr(web, "_config_service", ConfigService(cfg))
     return db
 
 
@@ -166,8 +172,6 @@ def _seed_two_sources(client):
 
 
 def test_timeseries_default_range_is_90(usage_db, monkeypatch):
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     _seed_two_sources(TestClient(web.app))
 
     resp = TestClient(web.app).get("/api/usage/timeseries")
@@ -177,8 +181,6 @@ def test_timeseries_default_range_is_90(usage_db, monkeypatch):
 
 
 def test_timeseries_invalid_days_falls_back_to_90(usage_db, monkeypatch):
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     resp = TestClient(web.app).get("/api/usage/timeseries?days=5")
     assert resp.json()["range_days"] == 90
 
@@ -216,8 +218,6 @@ def test_timeseries_aggregates_across_sources_and_applies_alias(usage_db, monkey
 
 
 def test_timeseries_unknown_model_kept_as_own_label(usage_db, monkeypatch):
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     client = TestClient(web.app)
     client.post("/api/usage/report", json={
         "source_id": "m1", "points": [
@@ -230,8 +230,6 @@ def test_timeseries_unknown_model_kept_as_own_label(usage_db, monkeypatch):
 
 
 def test_timeseries_empty_returns_empty_days(monkeypatch, usage_db):
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     body = TestClient(web.app).get("/api/usage/timeseries?days=7").json()
     assert body["days"] == []
     assert body["models"] == []
@@ -240,8 +238,6 @@ def test_timeseries_empty_returns_empty_days(monkeypatch, usage_db):
 def test_timeseries_all_models_carries_input_output_and_is_not_collapsed(usage_db, monkeypatch):
     """`all_models` keeps every model separate (no top-8 + 其他 rollup)
     and reports input/output token totals for each."""
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     client = TestClient(web.app)
     # one full-day snapshot, as the agent sends it (a repeat post for the same
     # date replaces the whole day, so models must arrive together)
@@ -271,8 +267,6 @@ def test_timeseries_all_models_carries_input_output_and_is_not_collapsed(usage_d
 
 
 def test_timeseries_models_summary_includes_input_output(usage_db, monkeypatch):
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     client = TestClient(web.app)
     client.post("/api/usage/report", json={
         "source_id": "m1",
@@ -286,8 +280,6 @@ def test_timeseries_models_summary_includes_input_output(usage_db, monkeypatch):
 
 def test_report_accepts_token_breakdown_and_timeseries_surfaces_it(usage_db, monkeypatch):
     """The five token categories round-trip end-to-end through report -> timeseries."""
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     client = TestClient(web.app)
     resp = client.post("/api/usage/report", json={
         "source_id": "m1",
@@ -311,8 +303,6 @@ def test_report_accepts_token_breakdown_and_timeseries_surfaces_it(usage_db, mon
 
 def test_report_legacy_payload_without_cache_still_accepted(usage_db, monkeypatch):
     """An older reporter sending only input/output must keep working (back-compat)."""
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(providers={}))
     client = TestClient(web.app)
     resp = client.post("/api/usage/report", json={
         "source_id": "m1",

@@ -169,3 +169,26 @@ class TestV2Disabled:
             assert c.post("/api/push/v2/any", json={}).status_code == 503
         web_mod._v2_manager = None
         web_mod._config_service = None
+
+
+class TestV1EndpointsRemoved:
+    def test_old_usage_returns_404(self, client: TestClient):
+        assert client.get("/api/usage").status_code == 404
+
+    def test_old_status_returns_404(self, client: TestClient):
+        assert client.get("/api/status").status_code == 404
+
+    def test_old_push_claude_returns_404(self, client: TestClient):
+        assert client.post("/api/push/claude", json={}).status_code == 404
+
+    def test_old_push_grok_returns_404(self, client: TestClient):
+        assert client.post("/api/push/grok", json={}).status_code == 404
+
+    def test_old_push_cursor_returns_404(self, client: TestClient):
+        assert client.post("/api/push/cursor", json={}).status_code == 404
+
+    def test_old_push_mimo_returns_404(self, client: TestClient):
+        assert client.post("/api/push/mimo", json={}).status_code == 404
+
+    def test_old_push_antigravity_returns_404(self, client: TestClient):
+        assert client.post("/api/push/antigravity", json={}).status_code == 404

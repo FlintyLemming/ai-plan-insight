@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from ai_plan_insight import usage_store, web
 from ai_plan_insight.usage_store import UTC8
-from ai_plan_insight.config import Config
 
 NOW = datetime(2026, 7, 11, 12, 0, 0, tzinfo=UTC8)
 
@@ -99,9 +98,6 @@ def _setup_web(tmp_path, monkeypatch):
     db = tmp_path / "usage.db"
     monkeypatch.setattr(web, "_usage_db_path", db)
     usage_store.init_db(db)
-    monkeypatch.setattr(
-        web, "load_config", lambda _=None: Config(providers={})
-    )
     return sqlite3.connect(db)
 
 
