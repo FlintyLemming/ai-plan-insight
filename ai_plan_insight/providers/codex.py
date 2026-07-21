@@ -126,23 +126,100 @@ class CodexProvider(BaseProvider):
         return self._parse_unrestricted(raw_data)
 
 
-class CodexSecurityProvider(CodexProvider):
-    """Sub2API Codex relay (tinykittens / shared wallet)."""
+class Sub2ApiProvider(CodexProvider):
+    """Sub2API relay — 套餐账号 (subscription plan) or 余额账号 (wallet balance).
+
+    Both shapes report ``mode == "unrestricted"``; a plan account additionally
+    carries a ``subscription`` object with per-window USD limits, whereas a
+    wallet account only carries a top-level ``balance``.
+    """
 
     DEFAULT_BASE_URL = "https://tinykittens.online"
 
+    # (duration, display unit, limit field, usage field) per subscription window.
+    _PLAN_WINDOWS = (
+        (30, "月 (USD)", "monthly_limit_usd", "monthly_usage_usd"),
+        (7, "周 (USD)", "weekly_limit_usd", "weekly_usage_usd"),
+        (1, "日 (USD)", "daily_limit_usd", "daily_usage_usd"),
+    )
+
     @property
     def name(self) -> str:
-        return "Codex Sub2API 中转"
+        return "Sub2API 中转"
 
-    def _parse_unrestricted(self, raw_data: dict) -> UsageInfo:
+    def parse_usage(self, raw_data: dict) -> UsageInfo:
+        if raw_data.get("mode") == "quota_limited" or raw_data.get("quota"):
+            return self._parse_quota_limited(raw_data)
+        sub = raw_data.get("subscription")
+        if isinstance(sub, dict):
+            return self._parse_plan(raw_data, sub)
+        return self._parse_wallet(raw_data)
+
+    def _parse_plan(self, raw_data: dict, sub: dict) -> UsageInfo:
+        """套餐账号: show plan name, expiry, and per-window USD limits."""
+        end = self._parse_expires_at(sub)  # subscription.expires_at
+
+        balances: dict[str, str] = {}
+        plan_name = raw_data.get("planName")
+        if plan_name:
+            balances["套餐"] = str(plan_name)
+        if end:
+            balances["订阅到期"] = end.strftime("%Y-%m-%d")
+        days_left = raw_data.get("days_until_expiry")
+        if days_left is not None:
+            balances["剩余天数"] = f"{days_left} 天"
+
+        limits: list[LimitDetail] = []
+        for duration, unit, limit_key, usage_key in self._PLAN_WINDOWS:
+            raw_limit = sub.get(limit_key)
+            if raw_limit is None:
+                continue
+            limit = float(raw_limit or 0)
+            used = float(sub.get(usage_key, 0) or 0)
+            limits.append(
+                LimitDetail(
+                    duration=duration,
+                    time_unit=unit,
+                    limit=f"{limit:.2f}",
+                    used=f"{used:.2f}",
+                    remaining=f"{max(limit - used, 0):.2f}",
+                )
+            )
+
+        # Fall back to the top-level remaining quota when no window is exposed.
+        if not limits:
+            remaining = float(raw_data.get("remaining", 0) or 0)
+            limits.append(
+                LimitDetail(
+                    duration=0,
+                    time_unit="USD",
+                    limit=f"{remaining:.2f}",
+                    used="0.00",
+                    remaining=f"{remaining:.2f}",
+                    reset_time=end,
+                )
+            )
+
+        return UsageInfo(
+            provider=self.name,
+            balances=balances,
+            limits=limits,
+            raw_response=raw_data,
+            model_stats=self._parse_model_stats(raw_data),
+        )
+
+    def _parse_wallet(self, raw_data: dict) -> UsageInfo:
+        """余额账号: show wallet balance and total spend."""
         balance = float(raw_data.get("balance", raw_data.get("remaining", 0)) or 0)
         total = (raw_data.get("usage") or {}).get("total") or {}
         used = float(total.get("actual_cost", total.get("cost", 0)) or 0)
         limit = used + balance
 
+        balances: dict[str, str] = {
+            "套餐": str(raw_data.get("planName", "钱包余额")),
+            "余额": f"${balance:.2f}",
+        }
         reset_time = self._parse_expires_at(raw_data)
-        balances: dict[str, str] = {}
         if reset_time:
             balances["套餐到期"] = reset_time.strftime("%Y-%m-%d")
         days_left = raw_data.get("days_until_expiry")

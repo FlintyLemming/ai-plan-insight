@@ -25,7 +25,7 @@
 | 服务 | `type` | 模式 | 凭据 / 说明 | Agent 项目地址 |
 |---|---|---|---|---|
 | Codex 中转 | `codex` | fetch | Sub2API，配置 `api_key` + `base_url` | — |
-| Codex Sub2API 中转 | `codex_sub2api` | fetch | 配置 `api_key` + `base_url` | — |
+| Sub2API 中转 | `sub2api` | fetch | 套餐/余额账号，配置 `api_key` + `base_url` | — |
 | 火山方舟 Coding Plan | `volcengine_ark` | fetch | 配置 `access_key_id` + `access_key_secret` | — |
 | GLM Coding Plan (智谱) | `bigmodel` | fetch | 配置 `api_key`，支持历史用量视图 | — |
 | GLM Coding Plan 国际版 | `bigmodel_international` | fetch | 配置 `api_key` | — |

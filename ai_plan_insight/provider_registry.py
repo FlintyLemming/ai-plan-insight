@@ -28,7 +28,7 @@ from .providers.bigmodel_international import BigModelInternationalProvider
 from .providers.aiping import AipingProvider
 from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.zenmux import ZenMuxProvider
-from .providers.codex import CodexProvider, CodexSecurityProvider
+from .providers.codex import CodexProvider, Sub2ApiProvider
 from .providers.antigravity import AntigravityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.base import BaseProvider
@@ -42,7 +42,7 @@ _TYPE_DISPLAY_NAMES: dict[str, str] = {
     "huawei_cloud": "华为云余额",
     "zenmux": "ZenMux",
     "codex": "自购 Codex 中转站",
-    "codex_sub2api": "Codex Sub2API 中转",
+    "sub2api": "Sub2API 中转",
     "antigravity": "Antigravity",
     "volcengine_ark": "火山方舟 Coding Plan",
     "cursor": "Cursor",
@@ -61,7 +61,7 @@ _FETCH_FACTORIES: dict[str, Type[BaseProvider]] = {
     "huawei_cloud": HuaweiCloudBssProvider,
     "zenmux": ZenMuxProvider,
     "codex": CodexProvider,
-    "codex_sub2api": CodexSecurityProvider,
+    "sub2api": Sub2ApiProvider,
     "antigravity": AntigravityProvider,
     "volcengine_ark": VolcEngineArkProvider,
 }
