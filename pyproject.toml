@@ -1,6 +1,6 @@
 [project]
 name = "ai-plan-insight"
-version = "0.9.1"
+version = "0.10.0"
 description = "Display remaining usage for AI coding plan subscriptions"
 requires-python = ">= 3.12"
 dependencies = [

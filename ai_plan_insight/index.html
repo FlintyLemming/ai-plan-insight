@@ -689,7 +689,18 @@ function renderUsageChart(data) {
 
   // Calculate grand total across all days and models
   const grandTotal = modelSummary.reduce((sum, m) => sum + (m.grand_total || 0), 0);
-  if (totalEl) totalEl.innerHTML = `总用量：<strong>${formatTokens(grandTotal)}</strong>`;
+  // USD equivalent: sum priced models; flag partial when any token-bearing
+  // model was unpriced (cost_usd null) or any model reports cost_partial.
+  let grandCost = 0, costPartial = false, hasAnyCost = false;
+  modelSummary.forEach(m => {
+    if (m.cost_usd != null) { grandCost += m.cost_usd; hasAnyCost = true; }
+    else if (m.grand_total) costPartial = true;
+    if (m.cost_partial) costPartial = true;
+  });
+  const costStr = hasAnyCost
+    ? `（等额价值 <strong>${formatUsd(grandCost)}</strong>${costPartial ? '<sup title="部分原始模型缺少价格数据，此为已知价格部分的合计">*</sup>' : ''}）`
+    : '';
+  if (totalEl) totalEl.innerHTML = `总用量：<strong>${formatTokens(grandTotal)}</strong> ${costStr}`;
 
   const colorByLabel = {};
   modelSummary.forEach(m => { colorByLabel[m.label] = m.color; });
