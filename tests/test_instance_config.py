@@ -7,7 +7,6 @@ from ai_plan_insight.instance_config import (
     V2Config,
     load_v2_config,
     LoadResult,
-    resolve_v2_config_path,
     _INSTANCE_ID_RE,
 )
 
@@ -219,24 +218,6 @@ class TestLoadV2Config:
         assert result.config_error is None
         assert "no-key" not in result.config.providers
         assert "no-key" in result.instance_errors
-
-
-class TestResolveV2ConfigPath:
-    def test_explicit_path(self, tmp_path: Path):
-        p = tmp_path / "custom.json"
-        assert resolve_v2_config_path(str(p)) == p
-
-    def test_from_config_dir(self, tmp_path: Path):
-        # When config_path points to a dir's config.json, v2 should be in the same dir
-        config_p = tmp_path / "config.json"
-        config_p.write_text("{}")
-        result = resolve_v2_config_path(str(config_p), config_path=str(config_p))
-        assert result == tmp_path / "config.v2.json"
-
-    def test_default_path(self):
-        from ai_plan_insight.config_loader import DEFAULT_CONFIG_PATH
-        result = resolve_v2_config_path(None, config_path=None)
-        assert result == DEFAULT_CONFIG_PATH.parent / "config.v2.json"
 
 
 class TestV2ConfigAliases:

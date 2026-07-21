@@ -193,14 +193,19 @@ TODAY = datetime.now(usage_store.UTC8).date().isoformat()
 
 
 def _setup_report(tmp_path, monkeypatch, secret="abc", enforce=False):
+    import json
+    from ai_plan_insight.config_service import ConfigService
+
     db = tmp_path / "usage.db"
     monkeypatch.setattr(web, "_usage_db_path", db)
     usage_store.init_db(db)
-    monkeypatch.setattr(
-        web, "load_config", lambda _=None: Config(
-            providers={}, push_auth_secret=secret, enforce_push_auth=enforce
-        )
-    )
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({
+        "providers": {},
+        "push_auth_secret": secret,
+        "enforce_push_auth": enforce,
+    }))
+    monkeypatch.setattr(web, "_config_service", ConfigService(cfg))
 
 
 def test_report_soft_no_token_still_saves(tmp_path, monkeypatch):

@@ -183,12 +183,16 @@ def test_timeseries_invalid_days_falls_back_to_90(usage_db, monkeypatch):
     assert resp.json()["range_days"] == 90
 
 
-def test_timeseries_aggregates_across_sources_and_applies_alias(usage_db, monkeypatch):
-    from ai_plan_insight.config import Config
-    monkeypatch.setattr(web, "load_config", lambda _=None: Config(
-        providers={},
-        model_aliases={"GLM 5.2": ["glm-5.2"]},
-    ))
+def test_timeseries_aggregates_across_sources_and_applies_alias(usage_db, monkeypatch, tmp_path):
+    import json
+    from ai_plan_insight.config_service import ConfigService
+
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({
+        "providers": {},
+        "model_aliases": {"GLM 5.2": ["glm-5.2"]},
+    }))
+    monkeypatch.setattr(web, "_config_service", ConfigService(cfg))
     _seed_two_sources(TestClient(web.app))
 
     resp = TestClient(web.app).get("/api/usage/timeseries?days=7")

@@ -12,7 +12,9 @@ from fastapi.responses import HTMLResponse
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
 from .config import ProviderConfig
-from .config_loader import load_config, DEFAULT_CONFIG_PATH
+from .config_loader import load_config
+from .config_service import ConfigService
+from .instance_config import DEFAULT_CONFIG_PATH
 from . import usage_store
 from .api_schemas import (
     UsageReportRequest,
@@ -64,7 +66,7 @@ _config_path: str | None = None  # set by main() when --config is provided
 _usage_db_path: Path | None = None  # set by main() (--usage-db) or resolved at startup
 
 # v2 state
-_v2_config_path: str | None = None  # set by main() via --v2-config
+_config_service: ConfigService | None = None
 _v2_manager = None  # type: V2RuntimeManager | None
 
 
@@ -132,14 +134,13 @@ def _restore_push_card_snapshots() -> None:
         logger.info("Restored %d push card snapshot(s)", len(rows))
 
 
-def _verify_push_auth(request: Request, source_id: str) -> tuple[bool, str | None]:
+def _verify_push_auth(request: Request, source_id: str, cfg) -> tuple[bool, str | None]:
     """Check the Bearer token against the configured global secret.
 
     Returns (is_valid, reason). `reason` is one of "missing", "malformed",
     or "invalid" when `is_valid` is False, and None when it is True.
     """
-    config = load_config(_config_path)
-    secret = config.push_auth_secret
+    secret = cfg.push_auth_secret
 
     auth_header = request.headers.get("Authorization")
     if not auth_header:
@@ -179,7 +180,7 @@ def _handle_push_auth(request: Request, source_id: str) -> None:
     In soft mode, auth failure is logged but the request continues.
     """
     config = load_config(_config_path)
-    is_valid, reason = _verify_push_auth(request, source_id)
+    is_valid, reason = _verify_push_auth(request, source_id, config)
     if not is_valid:
         logger.warning("push auth failed for %s: %s", source_id, reason)
     if config.enforce_push_auth and not is_valid:
@@ -361,25 +362,27 @@ async def _background_refresh():
 
 
 def _init_v2_manager() -> None:
-    """Load v2 config fault-tolerantly and create the runtime manager."""
-    global _v2_manager
-    from .instance_config import load_v2_config, resolve_v2_config_path
+    """Create the ConfigService and the v2 runtime manager from it."""
+    global _v2_manager, _config_service
     from .provider_instances import V2RuntimeManager
 
-    v2_path = resolve_v2_config_path(_v2_config_path, config_path=_config_path)
-    result = load_v2_config(str(v2_path))
+    config_path = Path(_config_path) if _config_path else DEFAULT_CONFIG_PATH
+    _config_service = ConfigService(config_path)
+    result = _config_service.get()
 
     if result.config_error is not None:
-        logger.error("v2 config unusable: %s", result.config_error)
+        logger.error("config unusable: %s", result.config_error)
         _v2_manager = V2RuntimeManager.disabled(
             result.config_error, resolve_usage_db_path()
         )
+        _config_service.set_manager(_v2_manager)
         return
 
     _v2_manager = V2RuntimeManager(
         result.config, resolve_usage_db_path(),
         instance_errors=result.instance_errors,
     )
+    _config_service.set_manager(_v2_manager)
 
 
 @asynccontextmanager
@@ -647,11 +650,13 @@ async def report_usage(req: UsageReportRequest, request: Request):
     if not req.source_id:
         raise HTTPException(status_code=400, detail="source_id is required")
 
-    config = load_config(_config_path)
-    is_valid, reason = _verify_push_auth(request, req.source_id)
+    cfg = _config_service.get().config if _config_service is not None else None
+    if cfg is None:
+        raise HTTPException(status_code=503, detail="config not available")
+    is_valid, reason = _verify_push_auth(request, req.source_id, cfg)
     if not is_valid:
         logger.warning("push auth failed for %s: %s", req.source_id, reason)
-    if config.enforce_push_auth and not is_valid:
+    if cfg.enforce_push_auth and not is_valid:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
@@ -846,10 +851,11 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
 @app.get("/api/usage/timeseries", response_model=UsageTimeseriesResponse)
 async def usage_timeseries(days: int = 90):
     days = days if days in (7, 30, 90) else 90
-    config = load_config(_config_path)
+    cfg = _config_service.get().config if _config_service is not None else None
+    alias_lookup = cfg.alias_lookup if cfg is not None else {}
     try:
         with closing(_usage_conn()) as conn:
-            rows = usage_store.query_timeseries(conn, days, config.alias_lookup)
+            rows = usage_store.query_timeseries(conn, days, alias_lookup)
     except Exception as e:
         logger.error("usage timeseries failed: %s", e)
         return UsageTimeseriesResponse(
@@ -866,6 +872,8 @@ async def usage_timeseries(days: int = 90):
 
 @app.get("/api/usage/v2")
 async def get_usage_v2():
+    if _config_service is not None:
+        _config_service.get()  # mtime poll; may trigger manager.reload
     if _v2_manager is None or not _v2_manager.enabled:
         return []
     return _v2_manager.get_usage_v2()
@@ -873,26 +881,22 @@ async def get_usage_v2():
 
 @app.get("/api/status/v2")
 async def get_status_v2():
-    v1_has_providers = False
-    try:
-        config = load_config(_config_path)
-        v1_has_providers = len(config.providers) > 0
-    except Exception:
-        pass
-
     if _v2_manager is None:
-        return {"enabled": False, "last_updated": None, "config_error": None, "v1_has_providers": v1_has_providers}
-    status = _v2_manager.get_status()
-    status["v1_has_providers"] = v1_has_providers
-    return status
+        return {
+            "enabled": False,
+            "last_updated": None,
+            "config_error": None,
+            "instance_errors": {},
+        }
+    return _v2_manager.get_status()
 
 
 @app.post("/api/push/v2/{instance_id}")
 async def push_v2(instance_id: str, request: Request):
-    if _v2_manager is None or not _v2_manager.enabled:
+    if _config_service is None or _v2_manager is None or not _v2_manager.enabled:
         raise HTTPException(status_code=503, detail="v2 not available")
 
-    cfg = _v2_manager.config
+    cfg = _config_service.get().config  # hot reload poll
     if instance_id not in cfg.providers:
         raise HTTPException(status_code=404, detail=f"instance {instance_id!r} not registered")
 

@@ -155,28 +155,6 @@ def _empty_config() -> V2Config:
     return V2Config(providers={})
 
 
-def resolve_v2_config_path(
-    v2_config_path: str | None,
-    config_path: str | None = None,
-) -> Path:
-    """Resolve the v2 config file path.
-
-    Precedence:
-    1. Explicit --v2-config (must not be the same file as the old config)
-    2. Same directory as --config
-    3. Same directory as the default config path
-    """
-    if v2_config_path is not None:
-        p = Path(v2_config_path).resolve()
-        # If the same path was passed for both, treat as "no explicit v2 path"
-        if config_path is not None and p == Path(config_path).resolve():
-            return p.parent / "config.v2.json"
-        return Path(v2_config_path)
-    if config_path is not None:
-        return Path(config_path).resolve().parent / "config.v2.json"
-    return DEFAULT_CONFIG_PATH.parent / "config.v2.json"
-
-
 def _validate_instance(instance_id: str, cfg: V2InstanceConfig) -> None:
     """Validate one instance beyond what Pydantic already checks."""
     if not _INSTANCE_ID_RE.fullmatch(instance_id):
