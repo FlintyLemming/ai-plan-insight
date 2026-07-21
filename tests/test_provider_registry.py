@@ -215,9 +215,11 @@ class TestConvertPushPayload:
         assert len(resp.limits) == 2
         w5, w7 = resp.limits
         assert w5.limit_type == "PERCENT"
+        assert w5.time_unit == "5 小时"
         assert w5.used == "70.00"
         assert w5.remaining == "30.00"
         assert w5.reset_time == "2026-07-21T15:24:00+08:00"
+        assert w7.time_unit == "周"
         assert w7.used == "19.60"
         assert w7.remaining == "80.40"
         assert w7.reset_time == "2026-07-28T10:24:00+08:00"

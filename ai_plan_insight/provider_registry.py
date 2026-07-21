@@ -193,10 +193,12 @@ def _convert_qianwen(instance_id: str, title: str, payload: QianwenPushRequest) 
             )
         return None
 
+    # PERCENT 卡片直接展示 time_unit 文案（见 index.html），
+    # 所以这里用「5 小时 / 周」而不是裸的「小时 / 天」。
     limits = [
         lim for lim in (
-            window(5, "小时", payload.five_hour),
-            window(7, "天", payload.seven_day),
+            window(5, "5 小时", payload.five_hour),
+            window(7, "周", payload.seven_day),
         ) if lim is not None
     ]
 
