@@ -8,9 +8,6 @@ from .base import BaseProvider
 class CodexProvider(BaseProvider):
     """Sub2API Codex relay — quota-limited keys or wallet balance."""
 
-    DEFAULT_BASE_URL = "https://api2.ai.aiatechco.com"
-    HIDDEN_MODELS = {"gpt5.5", "glm-5.5", "glm5.5"}
-
     @property
     def name(self) -> str:
         return "自购 Codex 中转站"
@@ -19,7 +16,7 @@ class CodexProvider(BaseProvider):
         self._headers = {
             "Authorization": f"Bearer {self.config.api_key}",
         }
-        self._base_url = self.config.base_url or self.DEFAULT_BASE_URL
+        self._base_url = self.config.base_url or getattr(self, "DEFAULT_BASE_URL", None)
 
     async def fetch_usage(self) -> dict:
         url = f"{self._base_url}/v1/usage"
@@ -39,7 +36,6 @@ class CodexProvider(BaseProvider):
                 requests=m["requests"],
             )
             for m in raw_data.get("model_stats", [])
-            if m["model"] not in self.HIDDEN_MODELS
         ]
 
     def _parse_expires_at(self, raw_data: dict) -> datetime | None:
