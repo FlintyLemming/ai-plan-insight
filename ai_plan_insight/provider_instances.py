@@ -280,6 +280,62 @@ class V2RuntimeManager:
             self._refresh_task.cancel()
             self._refresh_task = None
 
+    def reload(
+        self,
+        new_config: V2Config,
+        instance_errors: dict[str, str] | None = None,
+    ) -> None:
+        """Atomically replace the runtime config (hot reload).
+
+        1. Stop the old fetch task.
+        2. Drop in-memory results for instances that are no longer in config
+           (push results for remaining instances are preserved).
+        3. Swap in the new config + instance_errors, mark enabled.
+        4. restore_snapshots() — only restores instances still in the new config.
+        5. Restart the fetch task if the new config has fetch instances.
+        """
+        self.stop()
+
+        new_ids = set(new_config.providers.keys())
+        for state in (
+            self._fetch_results,
+            self._pushed_results,
+            self._pushed_at,
+            self._prev_results,
+            self._consecutive_failures,
+        ):
+            for iid in list(state.keys()):
+                if iid not in new_ids:
+                    del state[iid]
+
+        self._config = new_config
+        self._instance_errors = instance_errors or {}
+        self._enabled = True
+        self._config_error = None
+
+        self.restore_snapshots()
+
+        if self.has_fetch_instances:
+            self._refresh_task = asyncio.create_task(self._background_refresh())
+
+    def disable(self, config_error: str) -> None:
+        """Mark this manager unusable in place (top-level config error).
+
+        Stops the fetch task, drops all in-memory instance results, and clears
+        the config. Used by ConfigService when the config file becomes
+        unparseable. (For initial construction use the `disabled` classmethod.)
+        """
+        self.stop()
+        self._fetch_results.clear()
+        self._pushed_results.clear()
+        self._pushed_at.clear()
+        self._prev_results.clear()
+        self._consecutive_failures.clear()
+        self._config = V2Config(providers={})
+        self._config_error = config_error
+        self._instance_errors = {}
+        self._enabled = False
+
     async def handle_push(self, instance_id: str, payload: Any) -> dict:
         """Process a push payload for one instance. Raises ValueError on error."""
         if instance_id not in self._config.providers:
