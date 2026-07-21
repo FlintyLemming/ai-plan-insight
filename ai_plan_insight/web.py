@@ -361,37 +361,25 @@ async def _background_refresh():
 
 
 def _init_v2_manager() -> None:
-    """Try to load v2 config and create the runtime manager. Sets _v2_manager or leaves it None."""
+    """Load v2 config fault-tolerantly and create the runtime manager."""
     global _v2_manager
     from .instance_config import load_v2_config, resolve_v2_config_path
     from .provider_instances import V2RuntimeManager
 
     v2_path = resolve_v2_config_path(_v2_config_path, config_path=_config_path)
-    if not v2_path.exists():
-        logger.info("v2 config not found at %s, v2 disabled", v2_path)
+    result = load_v2_config(str(v2_path))
+
+    if result.config_error is not None:
+        logger.error("v2 config unusable: %s", result.config_error)
+        _v2_manager = V2RuntimeManager.disabled(
+            result.config_error, resolve_usage_db_path()
+        )
         return
 
-    try:
-        v2_config = load_v2_config(str(v2_path))
-    except Exception as e:
-        logger.error("v2 config invalid: %s", e)
-        # Create a disabled manager to surface the error via /api/status/v2
-        mgr = V2RuntimeManager.__new__(V2RuntimeManager)
-        mgr._config = None
-        mgr._config_error = str(e)
-        mgr._enabled = False
-        mgr._last_updated = None
-        mgr._pushed_results = {}
-        mgr._pushed_at = {}
-        mgr._fetch_results = {}
-        mgr._consecutive_failures = {}
-        mgr._prev_results = {}
-        mgr._refresh_task = None
-        mgr._db_path = resolve_usage_db_path()
-        _v2_manager = mgr
-        return
-
-    _v2_manager = V2RuntimeManager(v2_config, resolve_usage_db_path())
+    _v2_manager = V2RuntimeManager(
+        result.config, resolve_usage_db_path(),
+        instance_errors=result.instance_errors,
+    )
 
 
 @asynccontextmanager

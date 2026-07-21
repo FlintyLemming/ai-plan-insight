@@ -33,9 +33,15 @@ PUSH_TTL_SECONDS = 30 * 60
 class V2RuntimeManager:
     """Manages v2 provider instances: fetch loop, push handling, caching, DB."""
 
-    def __init__(self, config: V2Config, db_path: Path) -> None:
+    def __init__(
+        self,
+        config: V2Config,
+        db_path: Path,
+        instance_errors: dict[str, str] | None = None,
+    ) -> None:
         self._config = config
         self._config_error: str | None = None
+        self._instance_errors: dict[str, str] = instance_errors or {}
         self._enabled = True
         self._db_path = db_path
 
@@ -47,6 +53,24 @@ class V2RuntimeManager:
         self._prev_results: dict[str, UsageResponse] = {}
         self._last_updated: str | None = None
         self._refresh_task: asyncio.Task | None = None
+
+    @classmethod
+    def disabled(cls, config_error: str, db_path: Path) -> "V2RuntimeManager":
+        """A manager that is not enabled and only surfaces a config error."""
+        mgr = cls.__new__(cls)
+        mgr._config = V2Config(providers={})
+        mgr._config_error = config_error
+        mgr._instance_errors = {}
+        mgr._enabled = False
+        mgr._db_path = db_path
+        mgr._fetch_results = {}
+        mgr._pushed_results = {}
+        mgr._pushed_at = {}
+        mgr._consecutive_failures = {}
+        mgr._prev_results = {}
+        mgr._last_updated = None
+        mgr._refresh_task = None
+        return mgr
 
     @property
     def config(self) -> V2Config:
@@ -330,4 +354,5 @@ class V2RuntimeManager:
             "enabled": self._enabled,
             "last_updated": self._last_updated,
             "config_error": self._config_error,
+            "instance_errors": dict(self._instance_errors),
         }

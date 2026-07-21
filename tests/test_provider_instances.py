@@ -149,21 +149,11 @@ class TestGetStatus:
         assert status["config_error"] is None
 
     def test_disabled_config_error(self, db_path: Path):
-        mgr = V2RuntimeManager.__new__(V2RuntimeManager)
-        mgr._config = None
-        mgr._config_error = "bad config"
-        mgr._enabled = False
-        mgr._last_updated = None
-        mgr._pushed_results = {}
-        mgr._pushed_at = {}
-        mgr._fetch_results = {}
-        mgr._consecutive_failures = {}
-        mgr._prev_results = {}
-        mgr._db_path = db_path
-        mgr._refresh_task = None
+        mgr = V2RuntimeManager.disabled("bad config", db_path)
         status = mgr.get_status()
         assert status["enabled"] is False
         assert status["config_error"] == "bad config"
+        assert status["instance_errors"] == {}
 
 
 class TestV2ResponseFields:

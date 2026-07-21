@@ -62,6 +62,12 @@ class TestV2Status:
         data = resp.json()
         assert data["v1_has_providers"] is False
 
+    def test_status_exposes_instance_errors_key(self, client: TestClient):
+        resp = client.get("/api/status/v2")
+        data = resp.json()
+        assert "instance_errors" in data
+        assert data["instance_errors"] == {}
+
 
 class TestV2Usage:
     def test_empty_initially(self, client: TestClient):

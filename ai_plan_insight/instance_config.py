@@ -130,6 +130,31 @@ class V2Config(BaseModel):
         return lookup
 
 
+from dataclasses import dataclass, field
+
+
+@dataclass
+class LoadResult:
+    """Outcome of a fault-tolerant config load.
+
+    - `config`: a V2Config containing ONLY the instances that passed validation
+      (empty `providers` when the top-level structure is unusable).
+    - `instance_errors`: instance_id -> error message for instances that were
+      skipped (unknown type, bad mode, empty label, unknown field, missing
+      required credentials, illegal instance_id). Does not affect other instances.
+    - `config_error`: top-level error (file missing, JSON parse failure,
+      top-level schema failure). Non-None means the whole config is unusable;
+      `config` is an empty-config V2Config in that case.
+    """
+    config: V2Config
+    instance_errors: dict[str, str] = field(default_factory=dict)
+    config_error: str | None = None
+
+
+def _empty_config() -> V2Config:
+    return V2Config(providers={})
+
+
 def resolve_v2_config_path(
     v2_config_path: str | None,
     config_path: str | None = None,
@@ -199,19 +224,93 @@ def _validate_instance(instance_id: str, cfg: V2InstanceConfig) -> None:
             )
 
 
-def load_v2_config(path: str) -> V2Config:
-    """Load and validate a v2 config file. Raises on any error."""
+def load_v2_config(path: str) -> LoadResult:
+    """Load and validate a v2 config file, fault-tolerantly.
+
+    Top-level errors (missing file, bad JSON, top-level schema failure) are
+    returned as `config_error` with an empty config. Per-instance errors are
+    collected in `instance_errors` and the offending instance is skipped;
+    other instances still load.
+    """
     config_path = Path(path)
     if not config_path.exists():
-        raise FileNotFoundError(f"v2 config not found: {config_path}")
+        return LoadResult(
+            config=_empty_config(),
+            config_error=f"config not found: {config_path}",
+        )
 
-    with open(config_path) as f:
-        raw = json.load(f)
+    try:
+        with open(config_path) as f:
+            raw = json.load(f)
+    except Exception as e:
+        return LoadResult(
+            config=_empty_config(),
+            config_error=f"config JSON parse failed: {e}",
+        )
 
-    config = V2Config.model_validate(raw)
+    # Parse top-level structure leniently so a bad instance field does not
+    # take down the whole config; validate each instance strictly afterwards.
+    if not isinstance(raw, dict):
+        return LoadResult(
+            config=_empty_config(),
+            config_error="config top-level must be a JSON object",
+        )
 
-    # Validate each instance
-    for instance_id, inst_cfg in config.providers.items():
-        _validate_instance(instance_id, inst_cfg)
+    raw_providers = raw.get("providers", {})
+    if not isinstance(raw_providers, dict):
+        return LoadResult(
+            config=_empty_config(),
+            config_error="'providers' must be a JSON object",
+        )
 
-    return config
+    # Top-level fields other than the known four are rejected as config_error.
+    known_top = {"providers", "model_aliases", "push_auth_secret", "enforce_push_auth"}
+    unknown_top = set(raw.keys()) - known_top
+    if unknown_top:
+        return LoadResult(
+            config=_empty_config(),
+            config_error=f"unknown top-level field(s): {sorted(unknown_top)}",
+        )
+
+    try:
+        model_aliases = raw.get("model_aliases", {}) or {}
+        if not isinstance(model_aliases, dict):
+            return LoadResult(
+                config=_empty_config(),
+                config_error="'model_aliases' must be a JSON object",
+            )
+        push_auth_secret = str(raw.get("push_auth_secret", "") or "")
+        enforce_push_auth = bool(raw.get("enforce_push_auth", False))
+    except Exception as e:
+        return LoadResult(config=_empty_config(), config_error=f"config invalid: {e}")
+
+    instance_errors: dict[str, str] = {}
+    valid_providers: dict[str, V2InstanceConfig] = {}
+    for instance_id, inst_raw in raw_providers.items():
+        if not isinstance(inst_raw, dict):
+            instance_errors[instance_id] = (
+                f"instance {instance_id!r}: must be a JSON object"
+            )
+            continue
+        try:
+            inst_cfg = V2InstanceConfig.model_validate(inst_raw)
+            _validate_instance(instance_id, inst_cfg)
+            valid_providers[instance_id] = inst_cfg
+        except Exception as e:
+            instance_errors[instance_id] = f"instance {instance_id!r}: {e}"
+
+    try:
+        config = V2Config(
+            providers=valid_providers,
+            model_aliases=model_aliases,
+            push_auth_secret=push_auth_secret,
+            enforce_push_auth=enforce_push_auth,
+        )
+    except Exception as e:
+        # e.g. model_aliases values are not lists[str] — top-level schema error.
+        return LoadResult(config=_empty_config(), config_error=f"config schema invalid: {e}")
+    return LoadResult(
+        config=config,
+        instance_errors=instance_errors,
+        config_error=None,
+    )
