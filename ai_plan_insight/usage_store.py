@@ -9,7 +9,7 @@ All dates are UTC+8 calendar days, matching the reporter agents.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -185,6 +185,12 @@ class TimeseriesRow:
     cache_write_tokens: int
     reasoning_tokens: int
     total: int
+    # Per-raw-id token tuples (input, output, cache_read, cache_write,
+    # reasoning) so callers can price each raw model at its own rate and sum
+    # per canonical label — the alias display name itself has no price.
+    raw_breakdown: dict[str, tuple[int, int, int, int, int]] = field(
+        default_factory=dict
+    )
 
 
 def query_timeseries(
@@ -229,6 +235,7 @@ def query_timeseries(
                 "reasoning_tokens": 0,
                 "total": 0,
                 "raw_ids": set(),
+                "raw_breakdown": {},
             },
         )
         slot["input_tokens"] += in_tok
@@ -238,6 +245,14 @@ def query_timeseries(
         slot["reasoning_tokens"] += rs_tok
         slot["total"] += in_tok + out_tok + cr_tok + cw_tok + rs_tok
         slot["raw_ids"].add(model_id)
+        prev = slot["raw_breakdown"].get(model_id, (0, 0, 0, 0, 0))
+        slot["raw_breakdown"][model_id] = (
+            prev[0] + in_tok,
+            prev[1] + out_tok,
+            prev[2] + cr_tok,
+            prev[3] + cw_tok,
+            prev[4] + rs_tok,
+        )
 
     rows = []
     for (d, label), v in sorted(agg.items()):
@@ -252,6 +267,7 @@ def query_timeseries(
                 cache_write_tokens=v["cache_write_tokens"],
                 reasoning_tokens=v["reasoning_tokens"],
                 total=v["total"],
+                raw_breakdown=dict(v["raw_breakdown"]),
             )
         )
     return rows

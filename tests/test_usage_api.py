@@ -294,3 +294,97 @@ def test_report_legacy_payload_without_cache_still_accepted(usage_db, monkeypatc
     assert m["total"] == 150
 
 
+
+
+# ── USD cost (等额价值) ───────────────────────────────────────
+
+from ai_plan_insight.pricing import ModelPrice
+
+
+class _StubPricing:
+    """Test double for web._pricing_service (no network, deterministic)."""
+
+    def __init__(self, table):
+        self._table = table
+
+    async def ensure_ready(self, timeout=5.0):
+        pass
+
+    def price_for(self, raw_id):
+        return self._table.get(raw_id)
+
+
+def test_timeseries_costs_sum_per_raw_id_across_alias(usage_db, monkeypatch, tmp_path):
+    """Merged labels price each raw id at its OWN rate, then sum."""
+    import json
+    from ai_plan_insight.config_service import ConfigService
+
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({
+        "providers": {},
+        "model_aliases": {"GLM 5.2": ["glm-5.2", "z-ai/glm-5.2"]},
+    }))
+    monkeypatch.setattr(web, "_config_service", ConfigService(cfg))
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={"source_id": "m1", "points": [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 1_000_000, "output_tokens": 0}]})
+    client.post("/api/usage/report", json={"source_id": "m2", "points": [
+        {"date": TODAY, "model_id": "z-ai/glm-5.2", "input_tokens": 0, "output_tokens": 1_000_000}]})
+    monkeypatch.setattr(web, "_pricing_service", _StubPricing({
+        "glm-5.2": ModelPrice(input=1.0 / 1e6, output=0.0),
+        "z-ai/glm-5.2": ModelPrice(input=0.0, output=2.0 / 1e6),
+    }))
+
+    m = client.get("/api/usage/timeseries?days=7").json()["all_models"][0]
+    assert m["label"] == "GLM 5.2"
+    # 1M input × $1/M (glm-5.2's price) + 1M output × $2/M (z-ai/glm-5.2's price)
+    assert m["cost_usd"] == pytest.approx(3.0)
+    assert m["cost_partial"] is False
+
+
+def test_timeseries_cost_none_when_no_raw_id_priced(usage_db, monkeypatch):
+    monkeypatch.setattr(web, "_pricing_service", _StubPricing({}))
+    client = TestClient(web.app)
+    _seed_two_sources(client)
+    m = client.get("/api/usage/timeseries?days=7").json()["all_models"][0]
+    assert m["cost_usd"] is None
+    assert m["cost_partial"] is True
+
+
+def test_timeseries_cost_partial_when_some_raw_ids_unpriced(usage_db, monkeypatch):
+    monkeypatch.setattr(web, "_pricing_service",
+                        _StubPricing({"glm-5.2": ModelPrice(input=1.0 / 1e6, output=0.0)}))
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={"source_id": "m1", "points": [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 1_000_000, "output_tokens": 0},
+        {"date": TODAY, "model_id": "kimi-for-coding", "input_tokens": 500_000, "output_tokens": 0}]})
+
+    by_label = {
+        m["label"]: m
+        for m in client.get("/api/usage/timeseries?days=7").json()["all_models"]
+    }
+    assert by_label["glm-5.2"]["cost_usd"] == pytest.approx(1.0)
+    assert by_label["glm-5.2"]["cost_partial"] is False
+    assert by_label["kimi-for-coding"]["cost_usd"] is None
+    assert by_label["kimi-for-coding"]["cost_partial"] is True
+
+
+def test_timeseries_models_summary_carries_costs_too(usage_db, monkeypatch):
+    """The top-8/其他 chart summary gets the same cost fields."""
+    monkeypatch.setattr(web, "_pricing_service",
+                        _StubPricing({"glm-5.2": ModelPrice(input=2.0 / 1e6, output=0.0)}))
+    client = TestClient(web.app)
+    _seed_two_sources(client)  # glm-5.2: 3000 input across two sources
+    body = client.get("/api/usage/timeseries?days=7").json()
+    m = next(x for x in body["models"] if x["label"] == "glm-5.2")
+    assert m["cost_usd"] == pytest.approx(3000 * 2.0 / 1e6)
+    assert m["cost_partial"] is False
+
+
+def test_timeseries_costs_absent_when_pricing_service_none(usage_db, monkeypatch):
+    monkeypatch.setattr(web, "_pricing_service", None)
+    client = TestClient(web.app)
+    _seed_two_sources(client)
+    m = client.get("/api/usage/timeseries?days=7").json()["all_models"][0]
+    assert m["cost_usd"] is None
+    assert m["cost_partial"] is False

@@ -204,6 +204,11 @@ class UsageModelSummary(BaseModel):
     reasoning_tokens: int = 0
     grand_total: int
     share_pct: float
+    # USD equivalent value; None when none of the label's raw ids had a price.
+    cost_usd: float | None = None
+    # True when some token-bearing raw ids were unpriced (cost_usd then covers
+    # only the priced portion).
+    cost_partial: bool = False
 
 
 class UsageTimeseriesResponse(BaseModel):

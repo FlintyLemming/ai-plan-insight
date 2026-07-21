@@ -438,6 +438,8 @@
   }
   /* Mobile: hide the per-token breakdown columns, keep only model + total */
   .usage-table th.col-detail, .usage-table td.col-detail { display: none; }
+  /* USD equivalent-value column: also hidden on mobile */
+  .usage-table th.col-cost, .usage-table td.col-cost { display: none; }
   .usage-table th {
     color: #94a3b8;
     font-weight: 600;
@@ -476,6 +478,7 @@
     .usage-axis-text { font-size: 11px; }
     /* Desktop: show all columns including the per-token breakdown */
     .usage-table th.col-detail, .usage-table td.col-detail { display: table-cell; }
+    .usage-table th.col-cost, .usage-table td.col-cost { display: table-cell; }
   }
   .usage-table-empty {
     color: #64748b;
@@ -890,6 +893,7 @@ function renderUsageTable() {
       <td class="num col-detail">${formatTokens(m.cache_read_tokens || 0)}</td>
       <td class="num col-detail">${formatTokens(m.cache_write_tokens || 0)}</td>
       <td class="num col-detail">${formatTokens(m.reasoning_tokens || 0)}</td>
+      <td class="num col-cost"${m.cost_partial ? ' title="部分原始模型缺少价格数据，此为已知价格部分的合计"' : ''}>${formatUsd(m.cost_usd)}</td>
       <td class="num col-total">${formatTokens(m.grand_total || 0)}</td>
     </tr>`;
   }).join('');
@@ -921,6 +925,7 @@ function renderUsageTable() {
         <th class="num col-detail">缓存读</th>
         <th class="num col-detail">缓存写</th>
         <th class="num col-detail">推理</th>
+        <th class="num col-cost">等额价值</th>
         <th class="num col-total">总计</th>
       </tr>
     </thead>
@@ -1384,6 +1389,12 @@ function toggleCardView(cardKey) {
 
 function formatTokens(n) {
   return (n / 1000000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' M';
+}
+
+function formatUsd(v) {
+  if (v === null || v === undefined) return '—';
+  if (v > 0 && v < 0.01) return '<$0.01';
+  return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function renderCard(data) {

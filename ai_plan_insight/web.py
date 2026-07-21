@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
-from . import usage_store
+from . import pricing, usage_store
 from .api_schemas import UsageReportRequest, UsageTimeseriesResponse
 from .config_service import ConfigService
 from .instance_config import DEFAULT_CONFIG_PATH
@@ -30,6 +30,10 @@ _usage_db_path: Path | None = None  # set by main() (--usage-db) or resolved at 
 # v2 state
 _config_service: ConfigService | None = None
 _v2_manager = None  # type: V2RuntimeManager | None
+
+# USD pricing (LiteLLM → OpenRouter → models.dev fallback chain); None until
+# lifespan initializes it, and tests may monkeypatch it with a stub.
+_pricing_service: pricing.PricingService | None = None
 
 
 def resolve_usage_db_path() -> Path:
@@ -122,6 +126,7 @@ def _init_v2_manager() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _pricing_service
     try:
         usage_store.init_db(resolve_usage_db_path())
     except Exception as e:
@@ -129,9 +134,17 @@ async def lifespan(app: FastAPI):
     _init_v2_manager()
     if _v2_manager and _v2_manager.enabled:
         _v2_manager.start()
+    try:
+        _pricing_service = pricing.get_pricing_service(resolve_usage_db_path())
+        _pricing_service.start_background()  # startup prefetch + hourly refresh
+    except Exception as e:
+        logger.error("pricing service init failed: %s", e)
+        _pricing_service = None
     yield
     if _v2_manager:
         _v2_manager.stop()
+    if _pricing_service is not None:
+        _pricing_service.stop_background()
 
 
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
@@ -222,12 +235,16 @@ async def get_admin_sources():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesResponse:
+def build_timeseries_response(rows: list, range_days: int, price_of=None) -> UsageTimeseriesResponse:
     """Turn alias-resolved store rows into the chart payload.
 
     `rows` are `usage_store.TimeseriesRow` (already aliased + cross-source
     summed). This layer assigns fixed colors by rank, rolls 9th+ models into
     "其他", and computes per-model grand totals + share %.
+
+    `price_of`, when given, maps a raw model id to a `pricing.ModelPrice`;
+    each raw id's OWN tokens are priced at its own rate and summed per
+    canonical label (the alias display name itself has no price).
     """
     grand: dict[str, int] = {}
     grand_in: dict[str, int] = {}
@@ -242,6 +259,29 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
         grand_cr[r.label] = grand_cr.get(r.label, 0) + r.cache_read_tokens
         grand_cw[r.label] = grand_cw.get(r.label, 0) + r.cache_write_tokens
         grand_rs[r.label] = grand_rs.get(r.label, 0) + r.reasoning_tokens
+
+    # USD cost per canonical label, priced per raw model id then summed.
+    label_cost: dict[str, float] = {}
+    label_priced: dict[str, bool] = {}
+    label_partial: dict[str, bool] = {}
+    if price_of is not None:
+        for r in rows:
+            for raw_id, (ti, to, tcr, tcw, trs) in r.raw_breakdown.items():
+                price = price_of(raw_id)
+                if price is None:
+                    if ti or to or tcr or tcw or trs:
+                        label_partial[r.label] = True
+                    continue
+                label_cost[r.label] = label_cost.get(r.label, 0.0) + price.cost(
+                    ti, to, tcr, tcw, trs
+                )
+                label_priced[r.label] = True
+
+    def cost_fields(label: str) -> dict:
+        return {
+            "cost_usd": label_cost[label] if label_priced.get(label) else None,
+            "cost_partial": bool(label_partial.get(label)),
+        }
 
     ranked = sorted(grand.items(), key=lambda kv: kv[1], reverse=True)
     top_labels = [label for label, _ in ranked[:USAGE_PALETTE_LIMIT]]
@@ -299,6 +339,7 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
             "grand_total": 0, "color": color,
             "input_tokens": 0, "output_tokens": 0,
             "cache_read_tokens": 0, "cache_write_tokens": 0, "reasoning_tokens": 0,
+            "cost_usd": None, "cost_partial": False,
         })
         slot["grand_total"] += total
         slot["input_tokens"] += grand_in.get(label, 0)
@@ -306,6 +347,10 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
         slot["cache_read_tokens"] += grand_cr.get(label, 0)
         slot["cache_write_tokens"] += grand_cw.get(label, 0)
         slot["reasoning_tokens"] += grand_rs.get(label, 0)
+        cf = cost_fields(label)
+        if cf["cost_usd"] is not None:
+            slot["cost_usd"] = (slot["cost_usd"] or 0.0) + cf["cost_usd"]
+        slot["cost_partial"] = slot["cost_partial"] or cf["cost_partial"]
     models_out = [
         {
             "label": rl,
@@ -317,6 +362,8 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
             "reasoning_tokens": s["reasoning_tokens"],
             "grand_total": s["grand_total"],
             "share_pct": round(s["grand_total"] * 100 / grand_total_all, 1),
+            "cost_usd": s["cost_usd"],
+            "cost_partial": s["cost_partial"],
         }
         for rl, s in summary.items()
     ]
@@ -335,6 +382,7 @@ def build_timeseries_response(rows: list, range_days: int) -> UsageTimeseriesRes
             "reasoning_tokens": grand_rs.get(label, 0),
             "grand_total": total,
             "share_pct": round(total * 100 / grand_total_all, 1),
+            **cost_fields(label),
         }
         for label, total in ranked
     ]
@@ -365,7 +413,11 @@ async def usage_timeseries(days: int = 90):
             models=[],
             all_models=[],
         )
-    return build_timeseries_response(rows, days)
+    price_of = None
+    if _pricing_service is not None:
+        await _pricing_service.ensure_ready()  # bounded wait; never raises
+        price_of = _pricing_service.price_for
+    return build_timeseries_response(rows, days, price_of)
 
 
 # ── v2 endpoints ──────────────────────────────────────────────

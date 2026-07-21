@@ -99,6 +99,34 @@ def test_alias_unknown_raw_id_maps_to_itself(tmp_path):
     conn.close()
 
 
+def test_alias_merged_row_retains_per_raw_id_breakdown(tmp_path):
+    """Merged rows keep each raw id's token tuple so callers can price per raw
+    model (each raw id has its own price) instead of the alias display name."""
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5,
+         "cache_read_tokens": 2, "cache_write_tokens": 1, "reasoning_tokens": 3},
+    ])
+    usage_store.upsert_points(conn, "m2", None, [
+        {"date": TODAY, "model_id": "z-ai/glm-5.2", "input_tokens": 7, "output_tokens": 1},
+        # a second point for the same raw id on the same date must accumulate
+        {"date": YESTERDAY, "model_id": "z-ai/glm-5.2", "input_tokens": 4, "output_tokens": 0},
+    ])
+    alias = {"glm-5.2": "GLM 5.2", "z-ai/glm-5.2": "GLM 5.2"}
+    rows = usage_store.query_timeseries(conn, 7, alias)
+    by_date = {r.date: r for r in rows}
+    assert by_date[TODAY].raw_breakdown == {
+        "glm-5.2": (10, 5, 2, 1, 3),
+        "z-ai/glm-5.2": (7, 1, 0, 0, 0),
+    }
+    assert by_date[YESTERDAY].raw_breakdown == {"z-ai/glm-5.2": (4, 0, 0, 0, 0)}
+    # un-merged rows carry their single raw id too
+    rows2 = usage_store.query_timeseries(conn, 7, {})
+    own = next(r for r in rows2 if r.label == "glm-5.2")
+    assert own.raw_breakdown == {"glm-5.2": (10, 5, 2, 1, 3)}
+    conn.close()
+
+
 def test_query_ignores_points_outside_window(tmp_path):
     conn = _connect(tmp_path)
     usage_store.upsert_points(conn, "m1", None, [
