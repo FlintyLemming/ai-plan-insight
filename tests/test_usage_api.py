@@ -177,8 +177,8 @@ def test_timeseries_aggregates_across_sources_and_applies_alias(usage_db, monkey
 
     resp = TestClient(web.app).get("/api/usage/timeseries?days=7")
     body = resp.json()
-    assert len(body["days"]) == 1
-    day = body["days"][0]
+    assert len(body["days"]) == 7  # whole range, empty days included
+    day = body["days"][-1]
     assert day["date"] == TODAY
     assert len(day["models"]) == 1
     m = day["models"][0]
@@ -205,6 +205,28 @@ def test_timeseries_unknown_model_kept_as_own_label(usage_db, monkeypatch):
     body = client.get("/api/usage/timeseries?days=7").json()
     labels = {m["label"] for m in body["models"]}
     assert "brand-new-model" in labels  # unknown -> own label, renders fine
+
+
+def test_timeseries_fills_days_without_usage(usage_db, monkeypatch):
+    """A day with no rows keeps its slot (empty models) so the bar chart
+    still shows it on the x-axis."""
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={
+        "source_id": "m1",
+        "points": [{"date": TODAY, "model_id": "glm-5.2",
+                    "input_tokens": 100, "output_tokens": 50}],
+    })
+
+    body = client.get("/api/usage/timeseries?days=7").json()
+    dates = [d["date"] for d in body["days"]]
+    expected = [
+        (datetime.now(UTC8).date() - timedelta(days=i)).isoformat()
+        for i in reversed(range(7))
+    ]
+    assert dates == expected
+    by_date = {d["date"]: d for d in body["days"]}
+    assert by_date[YESTERDAY]["models"] == []
+    assert by_date[TODAY]["models"][0]["total"] == 150
 
 
 def test_timeseries_empty_returns_empty_days(monkeypatch, usage_db):
@@ -269,7 +291,7 @@ def test_report_accepts_token_breakdown_and_timeseries_surfaces_it(usage_db, mon
     })
     assert resp.status_code == 200
     body = client.get("/api/usage/timeseries?days=7").json()
-    m = body["days"][0]["models"][0]
+    m = body["days"][-1]["models"][0]  # today — last day of the range
     assert m["cache_read_tokens"] == 80
     assert m["cache_write_tokens"] == 20
     assert m["reasoning_tokens"] == 5
@@ -289,7 +311,7 @@ def test_report_legacy_payload_without_cache_still_accepted(usage_db, monkeypatc
     })
     assert resp.status_code == 200
     body = client.get("/api/usage/timeseries?days=7").json()
-    m = body["days"][0]["models"][0]
+    m = body["days"][-1]["models"][0]  # today — last day of the range
     assert m["cache_read_tokens"] == 0
     assert m["total"] == 150
 

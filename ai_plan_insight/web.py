@@ -2,7 +2,7 @@ import logging
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager, closing
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -297,10 +297,21 @@ def build_timeseries_response(rows: list, range_days: int, price_of=None) -> Usa
     for r in rows:
         by_date.setdefault(r.date, []).append(r)
 
+    # Emit every calendar day in the range, not just the ones that have rows,
+    # so a zero-usage day keeps its slot on the x-axis instead of vanishing.
+    # (A range with no data at all still returns [] so the UI can show its
+    # "暂无用量数据" empty state rather than a flat chart.)
+    dates_out: list[str] = []
+    if by_date:
+        today = datetime.now(usage_store.UTC8).date()
+        start = today - timedelta(days=range_days - 1)
+        span = {(start + timedelta(days=i)).isoformat() for i in range(range_days)}
+        dates_out = sorted(span | by_date.keys())
+
     days_out: list[dict] = []
-    for d in sorted(by_date.keys()):
+    for d in dates_out:
         agg: dict[str, dict] = {}
-        for r in by_date[d]:
+        for r in by_date.get(d, []):
             resolved_label, _ = resolve(r.label)
             slot = agg.setdefault(resolved_label, {
                 "input_tokens": 0, "output_tokens": 0, "total": 0, "raw_ids": set(),
