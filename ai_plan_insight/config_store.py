@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import provider_types, provider_v2_store
-from .instance_config import V2InstanceConfig, _validate_instance
+from .instance_config import LoadResult, V2Config, V2InstanceConfig, _validate_instance
 
 _CREATE_APP_SETTING = """
 CREATE TABLE IF NOT EXISTS app_setting (
@@ -253,5 +253,238 @@ def delete_instance(conn: sqlite3.Connection, instance_id: str) -> None:
         raise KeyError(instance_id)
     conn.execute("DELETE FROM provider_v2_item WHERE instance_id = ?", (instance_id,))
     conn.execute("DELETE FROM provider_v2_snapshot WHERE instance_id = ?", (instance_id,))
+    _bump_version(conn)
+    conn.commit()
+
+
+# ── model aliases ─────────────────────────────────────────────
+
+def validate_aliases(mapping: dict) -> None:
+    """Raise ValueError if the alias mapping is not {label: [raw_id, ...]}."""
+    if not isinstance(mapping, dict):
+        raise ValueError("model_aliases must be an object")
+    for label, raw_ids in mapping.items():
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError("alias label must be a non-empty string")
+        if not isinstance(raw_ids, list):
+            raise ValueError(f"alias {label!r}: raw ids must be a list")
+        for raw_id in raw_ids:
+            if not isinstance(raw_id, str) or not raw_id.strip():
+                raise ValueError(f"alias {label!r}: raw id must be a non-empty string")
+
+
+def get_aliases(conn: sqlite3.Connection) -> dict[str, list[str]]:
+    """label -> raw ids, in insertion order (rowid)."""
+    out: dict[str, list[str]] = {}
+    for raw_id, label in conn.execute(
+        "SELECT raw_id, label FROM model_alias ORDER BY rowid"
+    ):
+        out.setdefault(label, []).append(raw_id)
+    return out
+
+
+def _write_aliases(conn: sqlite3.Connection, mapping: dict[str, list[str]]) -> None:
+    """Replace the alias table inside the caller's transaction.
+
+    `raw_id` is the primary key, so a raw id listed under two labels ends up
+    on the last one — matching V2Config.alias_lookup's "last definition wins".
+    """
+    conn.execute("DELETE FROM model_alias")
+    for label, raw_ids in mapping.items():
+        for raw_id in raw_ids:
+            conn.execute(
+                "INSERT INTO model_alias (raw_id, label) VALUES (?, ?) "
+                "ON CONFLICT(raw_id) DO UPDATE SET label = excluded.label",
+                (raw_id, label),
+            )
+
+
+def replace_aliases(conn: sqlite3.Connection, mapping: dict[str, list[str]]) -> None:
+    validate_aliases(mapping)
+    _write_aliases(conn, mapping)
+    _bump_version(conn)
+    conn.commit()
+
+
+# ── push auth ─────────────────────────────────────────────────
+
+def get_push_auth(conn: sqlite3.Connection) -> tuple[str, bool]:
+    secret = get_setting(conn, "push_auth_secret", "") or ""
+    enforce = (get_setting(conn, "enforce_push_auth", "0") or "0") == "1"
+    return secret, enforce
+
+
+def set_push_auth(conn: sqlite3.Connection, secret: str, enforce: bool) -> None:
+    _set_setting(conn, "push_auth_secret", secret)
+    _set_setting(conn, "enforce_push_auth", "1" if enforce else "0")
+    _bump_version(conn)
+    conn.commit()
+
+
+# ── load ──────────────────────────────────────────────────────
+
+def is_config_empty(conn: sqlite3.Connection) -> bool:
+    """True when no instance, no alias and no push secret has been stored."""
+    n_instances = conn.execute("SELECT COUNT(*) FROM provider_instance").fetchone()[0]
+    n_aliases = conn.execute("SELECT COUNT(*) FROM model_alias").fetchone()[0]
+    secret = get_setting(conn, "push_auth_secret", "") or ""
+    return n_instances == 0 and n_aliases == 0 and not secret
+
+
+def load_config(conn: sqlite3.Connection) -> LoadResult:
+    """Assemble a V2Config from the DB, mirroring load_v2_config's semantics.
+
+    Only enabled instances are loaded. Each row is re-validated: writes are
+    strictly checked, but a code upgrade can retire a type or change a
+    required field, and such rows must degrade into `instance_errors`
+    instead of taking down the whole config. `config_error` is reserved for
+    "the database itself is unreadable".
+    """
+    try:
+        rows = list_instances(conn, include_disabled=False)
+        aliases = get_aliases(conn)
+        secret, enforce = get_push_auth(conn)
+    except sqlite3.Error as e:
+        return LoadResult(
+            config=V2Config(providers={}),
+            config_error=f"config DB unreadable: {e}",
+        )
+
+    providers: dict[str, V2InstanceConfig] = {}
+    instance_errors: dict[str, str] = {}
+    for row in rows:
+        try:
+            cfg = row.to_instance_config()
+            _validate_instance(row.instance_id, cfg)
+            providers[row.instance_id] = cfg
+        except Exception as e:
+            instance_errors[row.instance_id] = f"instance {row.instance_id!r}: {e}"
+
+    try:
+        config = V2Config(
+            providers=providers, model_aliases=aliases,
+            push_auth_secret=secret, enforce_push_auth=enforce,
+        )
+    except Exception as e:
+        return LoadResult(
+            config=V2Config(providers={}),
+            config_error=f"config schema invalid: {e}",
+        )
+    return LoadResult(config=config, instance_errors=instance_errors)
+
+
+# ── export / import ───────────────────────────────────────────
+
+class ImportValidationError(ValueError):
+    """Raised when an import payload fails validation; `errors` maps the
+    offending instance_id (or "_" for top-level problems) to a message."""
+
+    def __init__(self, errors: dict[str, str]) -> None:
+        super().__init__("; ".join(f"{k}: {v}" for k, v in errors.items()))
+        self.errors = errors
+
+
+_STRUCTURAL_KEYS = ("type", "mode", "label", "order", "enabled")
+
+
+def export_config(conn: sqlite3.Connection) -> dict:
+    """Config as a config.json-shaped dict, plus `enabled` per instance.
+
+    Includes plaintext credentials; never includes the admin password.
+    """
+    providers: dict[str, dict] = {}
+    for row in list_instances(conn, include_disabled=True):
+        entry: dict = {
+            "type": row.type, "mode": row.mode, "label": row.label,
+            "order": row.order, "enabled": row.enabled,
+        }
+        entry.update(row.credentials)
+        providers[row.instance_id] = entry
+    secret, enforce = get_push_auth(conn)
+    return {
+        "providers": providers,
+        "model_aliases": get_aliases(conn),
+        "push_auth_secret": secret,
+        "enforce_push_auth": enforce,
+    }
+
+
+def parse_import_payload(payload: dict) -> tuple[list[InstanceRow], dict[str, list[str]], str, bool]:
+    """Validate an export-shaped payload wholesale.
+
+    Every problem is collected before raising, so the caller can show all of
+    them at once. Raises ImportValidationError; on success returns
+    (rows, aliases, push_auth_secret, enforce_push_auth).
+    """
+    errors: dict[str, str] = {}
+    if not isinstance(payload, dict):
+        raise ImportValidationError({"_": "payload must be a JSON object"})
+
+    raw_providers = payload.get("providers", {})
+    rows: list[InstanceRow] = []
+    if not isinstance(raw_providers, dict):
+        errors["_"] = "'providers' must be a JSON object"
+        raw_providers = {}
+
+    for instance_id, spec in raw_providers.items():
+        if not isinstance(spec, dict):
+            errors[instance_id] = "must be a JSON object"
+            continue
+        credentials = {
+            k: v for k, v in spec.items() if k not in _STRUCTURAL_KEYS
+        }
+        row = InstanceRow(
+            instance_id=instance_id,
+            type=str(spec.get("type", "")),
+            mode=str(spec.get("mode", "")),
+            label=str(spec.get("label", "")),
+            order=int(spec.get("order", 999) or 999),
+            enabled=bool(spec.get("enabled", True)),
+            credentials={k: str(v) for k, v in credentials.items()},
+        )
+        try:
+            validate_row(row)
+        except Exception as e:
+            errors[instance_id] = str(e)
+            continue
+        rows.append(row)
+
+    aliases = payload.get("model_aliases", {}) or {}
+    try:
+        validate_aliases(aliases)
+    except ValueError as e:
+        errors["_model_aliases"] = str(e)
+
+    secret = str(payload.get("push_auth_secret", "") or "")
+    enforce = bool(payload.get("enforce_push_auth", False))
+
+    if errors:
+        raise ImportValidationError(errors)
+    return rows, aliases, secret, enforce
+
+
+def import_config(conn: sqlite3.Connection, payload: dict) -> None:
+    """Validate everything, then replace all config in one transaction.
+
+    The admin password and active sessions are untouched.
+    """
+    rows, aliases, secret, enforce = parse_import_payload(payload)
+    now = datetime.now().astimezone().isoformat()
+    conn.execute("DELETE FROM provider_instance")
+    for row in rows:
+        conn.execute(
+            "INSERT INTO provider_instance "
+            "(instance_id, type, mode, label, sort_order, enabled, credentials_json, "
+            " created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row.instance_id, row.type, row.mode, row.label, row.order,
+                1 if row.enabled else 0, json.dumps(row.credentials, ensure_ascii=False),
+                now, now,
+            ),
+        )
+    _write_aliases(conn, aliases)
+    _set_setting(conn, "push_auth_secret", secret)
+    _set_setting(conn, "enforce_push_auth", "1" if enforce else "0")
     _bump_version(conn)
     conn.commit()

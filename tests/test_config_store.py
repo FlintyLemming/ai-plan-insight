@@ -173,3 +173,207 @@ class TestDelete:
         assert conn.execute(
             "SELECT COUNT(*) FROM provider_v2_item WHERE instance_id='kimi-main'"
         ).fetchone()[0] == 0
+
+
+class TestAliases:
+    def test_empty_initially(self, conn):
+        assert config_store.get_aliases(conn) == {}
+
+    def test_replace_then_read_back_preserves_order(self, conn):
+        config_store.replace_aliases(conn, {"GLM 5.2": ["glm-5.2", "glm5.2"], "GPT 5.2": ["gpt-5.2"]})
+        assert config_store.get_aliases(conn) == {
+            "GLM 5.2": ["glm-5.2", "glm5.2"], "GPT 5.2": ["gpt-5.2"],
+        }
+
+    def test_replace_is_wholesale(self, conn):
+        config_store.replace_aliases(conn, {"A": ["x"]})
+        config_store.replace_aliases(conn, {"B": ["y"]})
+        assert config_store.get_aliases(conn) == {"B": ["y"]}
+
+    def test_duplicate_raw_id_last_definition_wins(self, conn):
+        config_store.replace_aliases(conn, {"A": ["x"], "B": ["x"]})
+        assert config_store.get_aliases(conn) == {"B": ["x"]}
+
+    def test_replace_bumps_config_version(self, conn):
+        before = config_store.get_config_version(conn)
+        config_store.replace_aliases(conn, {"A": ["x"]})
+        assert config_store.get_config_version(conn) == before + 1
+
+    def test_empty_label_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.replace_aliases(conn, {"  ": ["x"]})
+
+    def test_non_list_raw_ids_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.replace_aliases(conn, {"A": "x"})
+
+    def test_empty_raw_id_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.replace_aliases(conn, {"A": [""]})
+
+
+class TestPushAuth:
+    def test_defaults(self, conn):
+        assert config_store.get_push_auth(conn) == ("", False)
+
+    def test_set_then_get(self, conn):
+        config_store.set_push_auth(conn, "top-secret", True)
+        assert config_store.get_push_auth(conn) == ("top-secret", True)
+
+    def test_set_bumps_config_version(self, conn):
+        before = config_store.get_config_version(conn)
+        config_store.set_push_auth(conn, "s", False)
+        assert config_store.get_config_version(conn) == before + 1
+
+
+class TestIsConfigEmpty:
+    def test_true_on_fresh_db(self, conn):
+        assert config_store.is_config_empty(conn) is True
+
+    def test_false_with_an_instance(self, conn):
+        config_store.create_instance(conn, _row())
+        assert config_store.is_config_empty(conn) is False
+
+    def test_false_with_an_alias(self, conn):
+        config_store.replace_aliases(conn, {"A": ["x"]})
+        assert config_store.is_config_empty(conn) is False
+
+    def test_false_with_a_push_secret(self, conn):
+        config_store.set_push_auth(conn, "s", False)
+        assert config_store.is_config_empty(conn) is False
+
+    def test_true_when_secret_is_empty_string(self, conn):
+        config_store.set_push_auth(conn, "", False)
+        assert config_store.is_config_empty(conn) is True
+
+
+class TestLoadConfig:
+    def test_empty_db_loads_empty_config(self, conn):
+        result = config_store.load_config(conn)
+        assert result.config_error is None
+        assert result.config.providers == {}
+        assert result.instance_errors == {}
+
+    def test_loads_enabled_instances_only(self, conn):
+        config_store.create_instance(conn, _row("on-inst"))
+        config_store.create_instance(conn, _row("off-inst", enabled=False))
+        result = config_store.load_config(conn)
+        assert set(result.config.providers) == {"on-inst"}
+
+    def test_maps_sort_order_to_order(self, conn):
+        config_store.create_instance(conn, _row(order=7))
+        assert config_store.load_config(conn).config.providers["kimi-main"].order == 7
+
+    def test_carries_aliases_and_push_auth(self, conn):
+        config_store.replace_aliases(conn, {"GLM 5.2": ["glm-5.2"]})
+        config_store.set_push_auth(conn, "s3cret", True)
+        cfg = config_store.load_config(conn).config
+        assert cfg.model_aliases == {"GLM 5.2": ["glm-5.2"]}
+        assert cfg.alias_lookup == {"glm-5.2": "GLM 5.2"}
+        assert cfg.push_auth_secret == "s3cret"
+        assert cfg.enforce_push_auth is True
+
+    def test_row_that_became_illegal_goes_to_instance_errors(self, conn):
+        config_store.create_instance(conn, _row())
+        # Simulate a code upgrade that removed this type, bypassing validation.
+        conn.execute("UPDATE provider_instance SET type = 'retired_type'")
+        conn.commit()
+        result = config_store.load_config(conn)
+        assert result.config.providers == {}
+        assert "kimi-main" in result.instance_errors
+        assert result.config_error is None
+
+    def test_other_instances_still_load_around_a_bad_row(self, conn):
+        config_store.create_instance(conn, _row("good-inst"))
+        config_store.create_instance(conn, _row("bad-inst"))
+        conn.execute("UPDATE provider_instance SET type = 'retired_type' WHERE instance_id = 'bad-inst'")
+        conn.commit()
+        result = config_store.load_config(conn)
+        assert set(result.config.providers) == {"good-inst"}
+        assert set(result.instance_errors) == {"bad-inst"}
+
+    def test_unreadable_db_yields_config_error(self, tmp_path):
+        c = sqlite3.connect(tmp_path / "empty.db")  # no schema at all
+        try:
+            result = config_store.load_config(c)
+        finally:
+            c.close()
+        assert result.config_error is not None
+        assert result.config.providers == {}
+
+
+class TestExportImport:
+    def test_export_shape(self, conn):
+        config_store.create_instance(conn, _row())
+        config_store.replace_aliases(conn, {"GLM 5.2": ["glm-5.2"]})
+        config_store.set_push_auth(conn, "s3cret", True)
+        assert config_store.export_config(conn) == {
+            "providers": {
+                "kimi-main": {
+                    "type": "kimi", "mode": "fetch", "label": "主账号",
+                    "order": 30, "enabled": True, "api_key": "sk-abcdef1234",
+                },
+            },
+            "model_aliases": {"GLM 5.2": ["glm-5.2"]},
+            "push_auth_secret": "s3cret",
+            "enforce_push_auth": True,
+        }
+
+    def test_export_includes_disabled_instances(self, conn):
+        config_store.create_instance(conn, _row("off-inst", enabled=False))
+        assert config_store.export_config(conn)["providers"]["off-inst"]["enabled"] is False
+
+    def test_roundtrip(self, conn):
+        config_store.create_instance(conn, _row())
+        config_store.create_instance(conn, _row("claude-x", type="claude", mode="push",
+                                                label="个人号", order=12, credentials={}))
+        config_store.replace_aliases(conn, {"GLM 5.2": ["glm-5.2"]})
+        config_store.set_push_auth(conn, "s3cret", True)
+        exported = config_store.export_config(conn)
+
+        config_store.import_config(conn, exported)
+        assert config_store.export_config(conn) == exported
+
+    def test_import_is_wholesale_replacement(self, conn):
+        config_store.create_instance(conn, _row("old-inst"))
+        config_store.import_config(conn, {
+            "providers": {
+                "new-inst": {"type": "claude", "mode": "push", "label": "新的", "order": 1},
+            },
+        })
+        assert [r.instance_id for r in config_store.list_instances(conn)] == ["new-inst"]
+
+    def test_import_bumps_config_version_once(self, conn):
+        before = config_store.get_config_version(conn)
+        config_store.import_config(conn, {"providers": {}})
+        assert config_store.get_config_version(conn) == before + 1
+
+    def test_import_collects_every_error_and_writes_nothing(self, conn):
+        config_store.create_instance(conn, _row("survivor"))
+        with pytest.raises(config_store.ImportValidationError) as exc:
+            config_store.import_config(conn, {
+                "providers": {
+                    "bad-type": {"type": "nonexistent", "mode": "fetch", "label": "x"},
+                    "bad id": {"type": "claude", "mode": "push", "label": "y"},
+                },
+            })
+        assert set(exc.value.errors) == {"bad-type", "bad id"}
+        assert [r.instance_id for r in config_store.list_instances(conn)] == ["survivor"]
+
+    def test_import_rejects_non_object_providers(self, conn):
+        with pytest.raises(config_store.ImportValidationError):
+            config_store.import_config(conn, {"providers": []})
+
+    def test_import_defaults_enabled_to_true(self, conn):
+        config_store.import_config(conn, {
+            "providers": {"claude-x": {"type": "claude", "mode": "push", "label": "x"}},
+        })
+        assert config_store.get_instance(conn, "claude-x").enabled is True
+
+    def test_import_honours_enabled_false(self, conn):
+        config_store.import_config(conn, {
+            "providers": {
+                "claude-x": {"type": "claude", "mode": "push", "label": "x", "enabled": False},
+            },
+        })
+        assert config_store.get_instance(conn, "claude-x").enabled is False
