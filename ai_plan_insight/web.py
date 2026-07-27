@@ -1,3 +1,4 @@
+import json
 import logging
 import secrets
 import sqlite3
@@ -10,10 +11,10 @@ from fastapi.responses import HTMLResponse
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
-from . import config_store, pricing, usage_store
+from . import config_migration, config_store, pricing, usage_store
 from .api_schemas import UsageReportRequest, UsageTimeseriesResponse
 from .config_service import ConfigService
-from .instance_config import DEFAULT_CONFIG_PATH
+from .instance_config import DEFAULT_CONFIG_PATH, load_v2_config
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,11 @@ def resolve_usage_db_path() -> Path:
         _usage_db_path = Path(__file__).resolve().parent.parent / "data" / "usage.db"
     _usage_db_path.parent.mkdir(parents=True, exist_ok=True)
     return _usage_db_path
+
+
+def _migration_source_path() -> Path:
+    """The legacy config.json to migrate from — `--config`, else the default."""
+    return Path(_config_path) if _config_path else DEFAULT_CONFIG_PATH
 
 
 def _usage_conn() -> sqlite3.Connection:
@@ -134,6 +140,11 @@ async def lifespan(app: FastAPI):
         config_store.init_config_db(resolve_usage_db_path())
     except Exception as e:
         logger.error("config DB init failed: %s", e)
+    try:
+        with closing(_usage_conn()) as conn:
+            config_migration.run_migration(conn, _migration_source_path())
+    except Exception as e:
+        logger.error("config migration failed: %s", e)
     _init_v2_manager()
     if _v2_manager and _v2_manager.enabled:
         _v2_manager.start()
@@ -224,6 +235,53 @@ async def dismiss_stale_source(source_id: str):
         raise HTTPException(status_code=500, detail=str(e))
     if not found:
         raise HTTPException(status_code=404, detail="unknown source")
+    return {"ok": True}
+
+
+@app.get("/api/notices")
+async def get_notices():
+    """Public, read-only banners for both the dashboard and the admin page.
+
+    `migration` is the one-shot "we imported your config.json" summary;
+    `config_file` is the standing warning that a config.json is still
+    sitting there being ignored. Neither contains credentials, which is why
+    this endpoint and its dismiss counterpart need no login — the dashboard
+    has no login, and requiring one to close a banner would deadlock.
+    """
+    out: dict = {"migration": None, "config_file": None}
+    try:
+        with closing(_usage_conn()) as conn:
+            if config_store.get_setting(conn, "migration_notice") == "pending":
+                raw = config_store.get_setting(conn, "migration_summary_json", "{}") or "{}"
+                try:
+                    summary = json.loads(raw)
+                except ValueError:
+                    summary = {}
+                out["migration"] = {"status": "pending", "summary": summary}
+    except Exception as e:
+        logger.error("notices query failed: %s", e)
+
+    source = _migration_source_path()
+    if source.exists():
+        result = load_v2_config(str(source))
+        if result.config_error is not None:
+            out["config_file"] = {
+                "kind": "parse_error", "path": str(source),
+                "error": result.config_error,
+            }
+        else:
+            out["config_file"] = {"kind": "ignored", "path": str(source), "error": None}
+    return out
+
+
+@app.post("/api/notices/migration/dismiss")
+async def dismiss_migration_notice():
+    try:
+        with closing(_usage_conn()) as conn:
+            config_store.set_setting(conn, "migration_notice", "dismissed")
+    except Exception as e:
+        logger.error("dismiss migration notice failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True}
 
 
