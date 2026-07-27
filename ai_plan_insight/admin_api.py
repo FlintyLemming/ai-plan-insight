@@ -7,6 +7,7 @@ Two routers: `router` holds the two endpoints the login screen itself needs
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import closing as _closing
 
@@ -14,7 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from . import admin_auth, config_store, provider_types, usage_store
-from .instance_config import _INSTANCE_ID_RE
+from .instance_config import V2InstanceConfig, _INSTANCE_ID_RE, _validate_instance
+from .provider_registry import build_fetch_provider, get_push_request_model
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,25 @@ class InstancePayload(BaseModel):
 
 class InstanceCreateRequest(InstancePayload):
     instance_id: str
+
+
+class AliasesRequest(BaseModel):
+    # `model_aliases` collides with Pydantic's protected `model_` namespace.
+    model_config = {"protected_namespaces": ()}
+
+    model_aliases: dict[str, list[str]]
+
+
+class PushAuthRequest(BaseModel):
+    push_auth_secret: str
+    enforce_push_auth: bool
+
+
+class TestConnectionRequest(BaseModel):
+    type: str
+    mode: str
+    instance_id: str = ""
+    credentials: dict[str, str] = Field(default_factory=dict)
 
 
 # ── public ────────────────────────────────────────────────────
@@ -261,3 +282,138 @@ async def get_sources():
     except Exception as e:
         logger.error("admin sources failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── model aliases ─────────────────────────────────────────────
+
+@protected.get("/aliases")
+async def get_aliases():
+    with closing_conn() as conn:
+        return {"model_aliases": config_store.get_aliases(conn)}
+
+
+@protected.put("/aliases")
+async def put_aliases(req: AliasesRequest):
+    with closing_conn() as conn:
+        try:
+            config_store.replace_aliases(conn, req.model_aliases)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+# ── push auth ─────────────────────────────────────────────────
+
+@protected.get("/push-auth")
+async def get_push_auth():
+    with closing_conn() as conn:
+        secret, enforce = config_store.get_push_auth(conn)
+    return {"push_auth_secret": mask_secret(secret), "enforce_push_auth": enforce}
+
+
+@protected.get("/push-auth/secret")
+async def get_push_auth_secret():
+    with closing_conn() as conn:
+        secret, _ = config_store.get_push_auth(conn)
+    return {"push_auth_secret": secret}
+
+
+@protected.put("/push-auth")
+async def put_push_auth(req: PushAuthRequest):
+    with closing_conn() as conn:
+        config_store.set_push_auth(conn, req.push_auth_secret, req.enforce_push_auth)
+    return {"ok": True}
+
+
+# ── export / import ───────────────────────────────────────────
+
+@protected.get("/export")
+async def export_config():
+    """Full config as JSON, including plaintext credentials. The admin
+    password hash is never part of it."""
+    with closing_conn() as conn:
+        return config_store.export_config(conn)
+
+
+@protected.post("/import")
+async def import_config(payload: dict):
+    with closing_conn() as conn:
+        try:
+            config_store.import_config(conn, payload)
+        except config_store.ImportValidationError as e:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "导入配置校验失败，未写入任何内容", "errors": e.errors},
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+# ── connection test ───────────────────────────────────────────
+
+TEST_TIMEOUT_SECONDS = 15
+
+
+async def _run_fetch_test(cfg: V2InstanceConfig):
+    """Build a throwaway provider and run one full fetch cycle.
+
+    Nothing is written to the DB and nothing enters the runtime cache;
+    monkeypatched wholesale in tests.
+    """
+    provider = build_fetch_provider("connection-test", cfg)
+    provider.authenticate()
+    raw = await provider.fetch_usage()
+    return provider.parse_usage(raw)
+
+
+@protected.post("/instances/test")
+async def test_instance(req: TestConnectionRequest):
+    t = provider_types.get_type(req.type)
+    if t is None:
+        raise HTTPException(status_code=422, detail=f"未知类型 {req.type}")
+    if req.mode not in t.modes:
+        raise HTTPException(
+            status_code=422, detail=f"类型 {req.type} 不支持 {req.mode} 模式"
+        )
+
+    if req.mode == "push":
+        with closing_conn() as conn:
+            secret, _ = config_store.get_push_auth(conn)
+        model = get_push_request_model(req.type)
+        instance_id = req.instance_id or "{instance_id}"
+        return {
+            "ok": True,
+            "push": {
+                "url": f"/api/push/v2/{instance_id}",
+                "push_auth_configured": bool(secret),
+                "payload_schema": model.model_json_schema() if model else None,
+            },
+        }
+
+    try:
+        cfg = V2InstanceConfig(
+            type=req.type, mode="fetch", label="连接测试", **req.credentials
+        )
+        _validate_instance("connection-test", cfg)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        parsed = await asyncio.wait_for(_run_fetch_test(cfg), timeout=TEST_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": f"测试超时（{TEST_TIMEOUT_SECONDS} 秒）"}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    return {
+        "ok": True,
+        "summary": {
+            "membership_level": parsed.membership_level,
+            "limits": [
+                f"{lim.duration} {lim.time_unit}：{lim.used}/{lim.limit}"
+                for lim in parsed.limits
+            ],
+            "balances": dict(parsed.balances),
+        },
+    }

@@ -370,3 +370,186 @@ class TestDeleteInstance:
 class TestSources:
     def test_returns_auth_status_when_logged_in(self, admin):
         assert admin.get("/api/admin/sources").status_code == 200
+
+
+class TestAliases:
+    def test_get_returns_stored_aliases(self, admin, db):
+        with closing(sqlite3.connect(db)) as conn:
+            config_store.replace_aliases(conn, {"GLM 5.2": ["glm-5.2", "glm5.2"]})
+        assert admin.get("/api/admin/aliases").json() == {
+            "model_aliases": {"GLM 5.2": ["glm-5.2", "glm5.2"]},
+        }
+
+    def test_put_replaces_wholesale(self, admin, db):
+        admin.put("/api/admin/aliases", json={"model_aliases": {"A": ["x"]}})
+        resp = admin.put("/api/admin/aliases", json={"model_aliases": {"B": ["y"]}})
+        assert resp.status_code == 200
+        with closing(sqlite3.connect(db)) as conn:
+            assert config_store.get_aliases(conn) == {"B": ["y"]}
+
+    def test_put_rejects_an_empty_raw_id(self, admin):
+        resp = admin.put("/api/admin/aliases", json={"model_aliases": {"A": [""]}})
+        assert resp.status_code == 422
+
+    def test_requires_login(self, client):
+        assert client.get("/api/admin/aliases").status_code == 401
+
+
+class TestPushAuthEndpoint:
+    def test_get_masks_the_secret(self, admin):
+        data = admin.get("/api/admin/push-auth").json()
+        assert data["push_auth_secret"] == "s3c••••oken"
+        assert data["enforce_push_auth"] is True
+
+    def test_secret_endpoint_returns_plaintext(self, admin):
+        assert admin.get("/api/admin/push-auth/secret").json() == {
+            "push_auth_secret": "s3cret-token",
+        }
+
+    def test_put_writes_both_fields(self, admin, db):
+        resp = admin.put("/api/admin/push-auth", json={
+            "push_auth_secret": "brand-new-secret", "enforce_push_auth": False,
+        })
+        assert resp.status_code == 200
+        with closing(sqlite3.connect(db)) as conn:
+            assert config_store.get_push_auth(conn) == ("brand-new-secret", False)
+
+    def test_requires_login(self, client):
+        assert client.get("/api/admin/push-auth/secret").status_code == 401
+
+
+class TestExportImport:
+    def test_export_contains_plaintext_credentials(self, admin):
+        data = admin.get("/api/admin/export").json()
+        assert data["providers"]["kimi-main"]["api_key"] == "sk-abcdef1234"
+        assert data["providers"]["kimi-main"]["enabled"] is True
+        assert data["push_auth_secret"] == "s3cret-token"
+
+    def test_export_never_contains_the_admin_password(self, admin):
+        assert "admin_password_hash" not in admin.get("/api/admin/export").text
+
+    def test_import_replaces_everything(self, admin, db):
+        resp = admin.post("/api/admin/import", json={
+            "providers": {
+                "only-one": {"type": "claude", "mode": "push", "label": "唯一", "order": 1},
+            },
+            "model_aliases": {"A": ["x"]},
+            "push_auth_secret": "imported",
+            "enforce_push_auth": False,
+        })
+        assert resp.status_code == 200
+        with closing(sqlite3.connect(db)) as conn:
+            assert [r.instance_id for r in config_store.list_instances(conn)] == ["only-one"]
+            assert config_store.get_aliases(conn) == {"A": ["x"]}
+            assert config_store.get_push_auth(conn) == ("imported", False)
+
+    def test_import_roundtrips_an_export(self, admin):
+        exported = admin.get("/api/admin/export").json()
+        assert admin.post("/api/admin/import", json=exported).status_code == 200
+        assert admin.get("/api/admin/export").json() == exported
+
+    def test_import_reports_every_error_and_writes_nothing(self, admin, db):
+        resp = admin.post("/api/admin/import", json={
+            "providers": {
+                "bad-type": {"type": "nonexistent", "mode": "fetch", "label": "x"},
+                "bad id": {"type": "claude", "mode": "push", "label": "y"},
+            },
+        })
+        assert resp.status_code == 422
+        assert set(resp.json()["detail"]["errors"]) == {"bad-type", "bad id"}
+        with closing(sqlite3.connect(db)) as conn:
+            assert {r.instance_id for r in config_store.list_instances(conn)} == {
+                "kimi-main", "claude-x",
+            }
+
+    def test_import_requires_login(self, client):
+        assert client.post("/api/admin/import", json={"providers": {}}).status_code == 401
+
+
+class TestConnectionTest:
+    def test_push_mode_returns_url_and_schema(self, admin):
+        resp = admin.post("/api/admin/instances/test", json={
+            "type": "claude", "mode": "push", "instance_id": "claude-x", "credentials": {},
+        })
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["push"]["url"] == "/api/push/v2/claude-x"
+        assert data["push"]["push_auth_configured"] is True
+        assert "properties" in data["push"]["payload_schema"]
+
+    def test_push_mode_without_instance_id_uses_a_placeholder(self, admin):
+        data = admin.post("/api/admin/instances/test", json={
+            "type": "claude", "mode": "push", "credentials": {},
+        }).json()
+        assert data["push"]["url"] == "/api/push/v2/{instance_id}"
+
+    def test_fetch_mode_reports_a_summary_on_success(self, admin, monkeypatch):
+        from ai_plan_insight import admin_api
+        from ai_plan_insight.models import LimitDetail, UsageInfo
+
+        async def fake_fetch(cfg):
+            return UsageInfo(
+                provider="Kimi", membership_level="Pro", raw_response={},
+                limits=[LimitDetail(duration=1, time_unit="day", limit="100",
+                                    used="10", remaining="90")],
+                balances={"余额": "12.34"},
+            )
+
+        monkeypatch.setattr(admin_api, "_run_fetch_test", fake_fetch)
+        data = admin.post("/api/admin/instances/test", json={
+            "type": "kimi", "mode": "fetch", "credentials": {"api_key": "sk-testkey123"},
+        }).json()
+        assert data["ok"] is True
+        assert data["summary"]["membership_level"] == "Pro"
+        assert data["summary"]["balances"] == {"余额": "12.34"}
+        assert len(data["summary"]["limits"]) == 1
+
+    def test_fetch_mode_reports_the_error_on_failure(self, admin, monkeypatch):
+        from ai_plan_insight import admin_api
+
+        async def boom(cfg):
+            raise RuntimeError("401 unauthorized")
+
+        monkeypatch.setattr(admin_api, "_run_fetch_test", boom)
+        data = admin.post("/api/admin/instances/test", json={
+            "type": "kimi", "mode": "fetch", "credentials": {"api_key": "sk-testkey123"},
+        }).json()
+        assert data["ok"] is False
+        assert "401 unauthorized" in data["error"]
+
+    def test_fetch_mode_does_not_touch_the_database(self, admin, monkeypatch, db):
+        from ai_plan_insight import admin_api
+        from ai_plan_insight.models import UsageInfo
+
+        async def fake_fetch(cfg):
+            return UsageInfo(provider="Kimi", raw_response={})
+
+        monkeypatch.setattr(admin_api, "_run_fetch_test", fake_fetch)
+        with closing(sqlite3.connect(db)) as conn:
+            before = config_store.get_config_version(conn)
+        admin.post("/api/admin/instances/test", json={
+            "type": "kimi", "mode": "fetch", "credentials": {"api_key": "sk-testkey123"},
+        })
+        with closing(sqlite3.connect(db)) as conn:
+            assert config_store.get_config_version(conn) == before
+            assert {r.instance_id for r in config_store.list_instances(conn)} == {
+                "kimi-main", "claude-x",
+            }
+
+    def test_missing_required_credential_is_422(self, admin):
+        resp = admin.post("/api/admin/instances/test", json={
+            "type": "kimi", "mode": "fetch", "credentials": {},
+        })
+        assert resp.status_code == 422
+
+    def test_unsupported_mode_is_422(self, admin):
+        resp = admin.post("/api/admin/instances/test", json={
+            "type": "claude", "mode": "fetch", "credentials": {},
+        })
+        assert resp.status_code == 422
+
+    def test_requires_login(self, client):
+        resp = client.post("/api/admin/instances/test", json={
+            "type": "claude", "mode": "push", "credentials": {},
+        })
+        assert resp.status_code == 401
