@@ -45,3 +45,20 @@ def seed_config(
         if push_auth_secret or enforce_push_auth:
             config_store.set_push_auth(conn, push_auth_secret, enforce_push_auth)
     return db_path
+
+
+ADMIN_PASSWORD = "admin-pass-1"
+
+
+def seed_admin_password(db_path, password: str = ADMIN_PASSWORD) -> None:
+    """Store an admin password hash directly, skipping the env-var path."""
+    from ai_plan_insight import admin_auth
+
+    with closing(sqlite3.connect(Path(db_path))) as conn:
+        config_store.set_setting(conn, "admin_password_hash", admin_auth.hash_password(password))
+
+
+def login(client, password: str = ADMIN_PASSWORD) -> None:
+    """Log a TestClient in; the session cookie sticks to the client."""
+    resp = client.post("/api/admin/login", json={"password": password})
+    assert resp.status_code == 200, resp.text

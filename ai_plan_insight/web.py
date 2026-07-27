@@ -164,6 +164,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
 
+from .admin_api import protected as _admin_protected_router, router as _admin_public_router
+
+app.include_router(_admin_public_router)
+app.include_router(_admin_protected_router)
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -284,17 +289,6 @@ async def dismiss_migration_notice():
         logger.error("dismiss migration notice failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True}
-
-
-@app.get("/api/admin/sources")
-async def get_admin_sources():
-    """Return the authentication status of every source that has reported."""
-    try:
-        with closing(_usage_conn()) as conn:
-            return usage_store.get_source_auth_status(conn)
-    except Exception as e:
-        logger.error("admin sources failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 def build_timeseries_response(rows: list, range_days: int, price_of=None) -> UsageTimeseriesResponse:

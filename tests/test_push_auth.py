@@ -76,9 +76,20 @@ def test_report_valid_token_sets_auth_valid(tmp_path, monkeypatch):
     web._config_service = None
 
 
-def test_admin_sources_lists_auth_status(tmp_path, monkeypatch):
-    from config_fixtures import seed_config
+def test_admin_sources_requires_login(tmp_path):
+    from config_fixtures import seed_admin_password, seed_config
     db = seed_config(tmp_path / "usage.db")
+    seed_admin_password(db)
+    web._config_path = str(tmp_path / "config.json")
+    web._usage_db_path = db
+    client = TestClient(web.app)
+    assert client.get("/api/admin/sources").status_code == 401
+
+
+def test_admin_sources_lists_auth_status(tmp_path, monkeypatch):
+    from config_fixtures import login, seed_admin_password, seed_config
+    db = seed_config(tmp_path / "usage.db")
+    seed_admin_password(db)
     web._config_path = str(tmp_path / "config.json")
     web._usage_db_path = db
     conn = sqlite3.connect(db)
@@ -90,6 +101,7 @@ def test_admin_sources_lists_auth_status(tmp_path, monkeypatch):
     usage_store.update_source_auth(conn, "my-agent", True, "2026-07-06T12:00:00+08:00")
     conn.commit()
     client = TestClient(web.app)
+    login(client)
     resp = client.get("/api/admin/sources")
     assert resp.status_code == 200
     assert resp.json() == [{
