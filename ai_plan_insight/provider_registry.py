@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Type
 
+from . import provider_types
 from .config import ProviderConfig
 from .instance_config import V2InstanceConfig
 from .api_schemas import (
@@ -32,25 +33,6 @@ from .providers.codex import CodexProvider, Sub2ApiProvider
 from .providers.antigravity import AntigravityProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.base import BaseProvider
-
-
-_TYPE_DISPLAY_NAMES: dict[str, str] = {
-    "kimi": "Kimi Coding Plan",
-    "bigmodel": "GLM Coding Plan",
-    "bigmodel_international": "GLM Coding Plan 国际版",
-    "aiping": "AIPing",
-    "huawei_cloud": "华为云余额",
-    "zenmux": "ZenMux",
-    "codex": "自购 Codex 中转站",
-    "sub2api": "Sub2API 中转",
-    "antigravity": "Antigravity",
-    "volcengine_ark": "火山方舟 Coding Plan",
-    "cursor": "Cursor",
-    "claude": "Claude 订阅",
-    "grok": "Grok 订阅",
-    "mimo_token_plan": "小米 MiMo Token Plan",
-    "qianwen": "千问 Token Plan",
-}
 
 
 _FETCH_FACTORIES: dict[str, Type[BaseProvider]] = {
@@ -280,7 +262,7 @@ class ProviderTypeEntry:
 
 
 def get_type_display_name(type_name: str) -> str:
-    return _TYPE_DISPLAY_NAMES.get(type_name, type_name)
+    return provider_types.display_name(type_name)
 
 
 def make_card_title(type_name: str, label: str) -> str:
@@ -288,14 +270,13 @@ def make_card_title(type_name: str, label: str) -> str:
 
 
 def get_type_entry(type_name: str) -> ProviderTypeEntry | None:
-    from .instance_config import _SUPPORTED_TYPES
-    modes = _SUPPORTED_TYPES.get(type_name)
-    if modes is None:
+    t = provider_types.get_type(type_name)
+    if t is None:
         return None
     return ProviderTypeEntry(
         type_name=type_name,
-        display_name=get_type_display_name(type_name),
-        modes=set(modes),
+        display_name=t.display_name,
+        modes=set(t.modes),
     )
 
 

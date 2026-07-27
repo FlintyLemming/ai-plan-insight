@@ -18,54 +18,14 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
 _INSTANCE_ID_RE = re.compile(r"[A-Za-z0-9._-]+")
 
-# Supported types and their allowed modes. Updated as new providers are added.
-_SUPPORTED_TYPES: dict[str, set[str]] = {
-    "kimi": {"fetch"},
-    "bigmodel": {"fetch"},
-    "bigmodel_international": {"fetch"},
-    "aiping": {"fetch"},
-    "huawei_cloud": {"fetch"},
-    "zenmux": {"fetch"},
-    "codex": {"fetch"},
-    "sub2api": {"fetch"},
-    "antigravity": {"fetch", "push"},
-    "volcengine_ark": {"fetch"},
-    "claude": {"push"},
-    "grok": {"push"},
-    "cursor": {"push"},
-    "mimo_token_plan": {"push"},
-    "qianwen": {"push"},
-}
+from . import provider_types
 
-# Credential fields each type is allowed to carry (beyond type/mode/label/order).
-# Types not listed here default to the empty set (no credentials).
-_ALLOWED_CREDENTIAL_FIELDS: dict[str, set[str]] = {
-    "kimi": {"api_key"},
-    "bigmodel": {"api_key"},
-    "bigmodel_international": {"api_key"},
-    "aiping": {"api_key"},
-    "huawei_cloud": {"user_name", "access_key_id", "access_key_secret"},
-    "zenmux": {"api_key"},
-    "codex": {"api_key", "base_url"},
-    "sub2api": {"api_key", "base_url"},
-    "antigravity": {"api_key", "base_url", "admin_password"},
-    "volcengine_ark": {"access_key_id", "access_key_secret"},
-    "mimo_token_plan": {"cookie"},
-}
-
-# Required credential fields per (type, mode). Empty = no required creds.
-_REQUIRED_CREDENTIAL_FIELDS: dict[tuple[str, str], set[str]] = {
-    ("kimi", "fetch"): {"api_key"},
-    ("bigmodel", "fetch"): {"api_key"},
-    ("bigmodel_international", "fetch"): {"api_key"},
-    ("aiping", "fetch"): {"api_key"},
-    ("huawei_cloud", "fetch"): {"user_name", "access_key_id", "access_key_secret"},
-    ("zenmux", "fetch"): {"api_key"},
-    ("codex", "fetch"): {"api_key"},
-    ("sub2api", "fetch"): {"api_key"},
-    ("antigravity", "fetch"): {"api_key"},
-    ("volcengine_ark", "fetch"): {"access_key_id", "access_key_secret"},
-}
+# Derived from provider_types.PROVIDER_TYPES — the single source of truth.
+# Kept as module-level names because _validate_instance() and existing tests
+# reference them directly.
+_SUPPORTED_TYPES: dict[str, set[str]] = provider_types.supported_types()
+_ALLOWED_CREDENTIAL_FIELDS: dict[str, set[str]] = provider_types.allowed_credential_fields()
+_REQUIRED_CREDENTIAL_FIELDS: dict[tuple[str, str], set[str]] = provider_types.required_credential_fields()
 
 # The known field names for V2InstanceConfig. Anything else is rejected.
 _KNOWN_FIELDS = {
