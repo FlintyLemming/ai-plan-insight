@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
-from . import config_migration, config_store, pricing, usage_store
+from . import admin_auth, config_migration, config_store, pricing, usage_store
 from .api_schemas import UsageReportRequest, UsageTimeseriesResponse
 from .config_service import ConfigService
 from .instance_config import DEFAULT_CONFIG_PATH, load_v2_config
@@ -143,6 +143,7 @@ async def lifespan(app: FastAPI):
     try:
         with closing(_usage_conn()) as conn:
             config_migration.run_migration(conn, _migration_source_path())
+            admin_auth.init_admin_password(conn)
     except Exception as e:
         logger.error("config migration failed: %s", e)
     _init_v2_manager()
