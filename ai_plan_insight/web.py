@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
+ADMIN_HTML = (Path(__file__).parent / "admin.html").read_text(encoding="utf-8")
 
 from . import admin_auth, config_migration, config_store, pricing, usage_store
 from .api_schemas import UsageReportRequest, UsageTimeseriesResponse
@@ -176,6 +177,14 @@ async def index():
         content=INDEX_HTML,
         status_code=200,
     )
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    """The admin shell. Unauthenticated on purpose — it has to render the
+    login box, and it carries no configuration data: everything it shows
+    comes from the protected /api/admin/* endpoints."""
+    return HTMLResponse(content=ADMIN_HTML, status_code=200)
 
 
 @app.post("/api/usage/report")

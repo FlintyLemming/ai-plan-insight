@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Plan Insight · 管理</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 1.25rem 0.75rem 4rem;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 1rem; margin-bottom: 1.25rem;
+  }
+  h1 { font-size: 1.35rem; }
+  h2 { font-size: 1.05rem; margin-bottom: 0.75rem; }
+  a { color: #38bdf8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .panel {
+    background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+    padding: 1.25rem; margin-bottom: 1.25rem;
+  }
+  .muted { color: #94a3b8; font-size: 0.85rem; }
+  .error { color: #fca5a5; }
+  .ok { color: #34d399; }
+  label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.25rem; }
+  input, select, textarea {
+    width: 100%; background: #0f172a; color: #e2e8f0;
+    border: 1px solid #334155; border-radius: 8px;
+    padding: 0.5rem 0.6rem; font: inherit;
+  }
+  input:focus, select:focus, textarea:focus { outline: 1px solid #38bdf8; }
+  textarea { min-height: 8rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+  .field { margin-bottom: 0.9rem; }
+  .field .help { font-size: 0.78rem; color: #64748b; margin-top: 0.25rem; }
+  .req::after { content: " *"; color: #fca5a5; }
+  button {
+    background: #334155; color: #e2e8f0; border: 1px solid #475569;
+    border-radius: 8px; padding: 0.45rem 0.9rem; font: inherit; cursor: pointer;
+  }
+  button:hover { background: #475569; }
+  button.primary { background: #0284c7; border-color: #0ea5e9; }
+  button.primary:hover { background: #0ea5e9; }
+  button.danger { background: #7f1d1d; border-color: #991b1b; }
+  button.danger:hover { background: #991b1b; }
+  button.link { background: none; border: none; color: #38bdf8; padding: 0.2rem 0.35rem; }
+  .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid #334155; }
+  th { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
+  td.num input { width: 5rem; }
+  tr.row-disabled { opacity: 0.45; }
+  tr.row-error td { border-bottom-color: #7f1d1d; }
+  .row-error-msg { color: #fca5a5; font-size: 0.78rem; }
+  .banner {
+    border-radius: 10px; padding: 0.8rem 1rem; margin-bottom: 0.75rem;
+    border: 1px solid #334155; background: #1e293b; font-size: 0.88rem;
+  }
+  .banner.warn { border-color: #b45309; background: #27210f; }
+  .banner .banner-head { display: flex; justify-content: space-between; gap: 1rem; }
+  .backdrop {
+    position: fixed; inset: 0; background: rgba(2, 6, 23, 0.75);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 2rem 1rem; overflow-y: auto; z-index: 10;
+  }
+  .modal {
+    background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+    padding: 1.25rem; width: 100%; max-width: 560px;
+  }
+  .modal-actions { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 1rem; }
+  .test-result { margin-top: 0.75rem; font-size: 0.85rem; white-space: pre-wrap; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+        padding: 0.6rem; overflow-x: auto; font-size: 0.78rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI Plan Insight · 管理</h1>
+    <a href="/">← 返回看板</a>
+  </header>
+
+  <div id="banners"></div>
+
+  <section class="panel" id="login-view" style="display:none;">
+    <h2>登录</h2>
+    <div id="login-form">
+      <div class="field">
+        <label for="password-input">管理密码</label>
+        <input id="password-input" type="password" autocomplete="current-password">
+      </div>
+      <div class="row">
+        <button class="primary" id="login-btn">登录</button>
+        <span class="error" id="login-error"></span>
+      </div>
+    </div>
+    <div id="login-unconfigured" style="display:none;">
+      <p class="error">未设置管理密码。</p>
+      <p class="muted">请设置环境变量 <code>ADMIN_PASSWORD</code> 后重启服务，再回到本页登录。</p>
+    </div>
+  </section>
+
+  <main id="admin-view" style="display:none;">
+    <section class="panel" id="instances-panel">
+      <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
+        <h2 style="margin:0;">订阅实例</h2>
+        <div class="row">
+          <button class="primary" id="new-instance-btn">新建实例</button>
+          <button class="link" id="logout-btn">退出登录</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>标签</th><th>类型</th><th>模式</th><th>排序</th><th>状态</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="instances-body"></tbody>
+      </table>
+      <p class="muted" id="instances-empty" style="display:none; margin-top:0.75rem;">
+        还没有实例，点「新建实例」添加一个。
+      </p>
+    </section>
+  </main>
+</div>
+
+<div class="backdrop" id="modal-backdrop" style="display:none;">
+  <div class="modal">
+    <h2 id="modal-title">新建实例</h2>
+    <div class="field">
+      <label class="req" for="modal-instance-id">实例 ID</label>
+      <input id="modal-instance-id" placeholder="claude-personal">
+      <div class="help" id="modal-instance-id-help">
+        push 实例的推送 URL 会用到它，只能包含字母、数字、<code>.</code>、<code>_</code>、<code>-</code>。
+      </div>
+    </div>
+    <div class="field">
+      <label class="req" for="modal-type">类型</label>
+      <select id="modal-type"></select>
+      <div class="help" id="modal-type-summary"></div>
+    </div>
+    <div class="field">
+      <label class="req" for="modal-mode">模式</label>
+      <select id="modal-mode"></select>
+    </div>
+    <div class="field">
+      <label class="req" for="modal-label">标签</label>
+      <input id="modal-label" placeholder="个人号">
+      <div class="help">卡片标题会显示为「类型名 · 标签」。</div>
+    </div>
+    <div class="field">
+      <label for="modal-order">排序</label>
+      <input id="modal-order" type="number" value="999">
+      <div class="help">数值越小越靠前，默认 999。</div>
+    </div>
+    <div class="field">
+      <label class="row" style="gap:0.4rem;">
+        <input id="modal-enabled" type="checkbox" checked style="width:auto;">
+        <span>启用（停用后该实例对运行时完全不存在）</span>
+      </label>
+    </div>
+    <div id="modal-credentials"></div>
+    <div class="modal-actions">
+      <button id="modal-test-btn">测试连接</button>
+      <div class="row">
+        <button id="modal-cancel-btn">取消</button>
+        <button class="primary" id="modal-save-btn">保存</button>
+      </div>
+    </div>
+    <div class="test-result" id="modal-test-result"></div>
+    <div class="error" id="modal-error" style="margin-top:0.5rem;"></div>
+  </div>
+</div>
+
+<script>
+let PROVIDER_TYPES = [];
+let INSTANCES = [];
+let INSTANCE_ERRORS = {};
+let EDITING_ID = null;   // null = creating
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function api(path, options) {
+  const opts = Object.assign({ headers: {} }, options || {});
+  if (opts.body !== undefined && typeof opts.body !== 'string') {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  const resp = await fetch(path, opts);
+  let data = null;
+  try { data = await resp.json(); } catch (e) { data = null; }
+  if (!resp.ok) {
+    const detail = data && data.detail;
+    const message = typeof detail === 'string'
+      ? detail
+      : (detail && detail.message) || `请求失败（${resp.status}）`;
+    const err = new Error(message);
+    err.status = resp.status;
+    err.detail = detail;
+    throw err;
+  }
+  return data;
+}
+
+function typeByName(name) {
+  return PROVIDER_TYPES.find(t => t.name === name) || null;
+}
+
+// ── banners ────────────────────────────────────────────────
+
+async function loadBanners() {
+  let notices;
+  try { notices = await api('/api/notices'); } catch (e) { return; }
+  const box = document.getElementById('banners');
+  const parts = [];
+  if (notices.migration) {
+    const s = notices.migration.summary || {};
+    const skipped = Object.keys(s.skipped || {});
+    let text = `已从 config.json 导入 ${s.instances || 0} 个实例、${s.aliases || 0} 组模型别名。`;
+    if (s.backup_ok) text += ` 原文件已备份为 ${s.backup_path}。`;
+    else text += ` 原文件备份失败（${s.backup_error || '未知原因'}），配置已以数据库为准，请手动删除或改名。`;
+    if (skipped.length) {
+      text += ` 有 ${skipped.length} 个实例因配置非法未导入，请在下方手动添加：${skipped.join('、')}。`;
+    }
+    parts.push(`<div class="banner"><div class="banner-head">
+      <span>${esc(text)}</span>
+      <button class="link" id="dismiss-migration-btn">知道了</button>
+    </div></div>`);
+  }
+  if (notices.config_file) {
+    const c = notices.config_file;
+    const text = c.kind === 'parse_error'
+      ? `检测到 ${c.path}，但它无法解析：${c.error}。修好后重启，或直接在本页手工录入。`
+      : `检测到 ${c.path}，已忽略，配置以数据库为准。确认无用后可以删除它。`;
+    parts.push(`<div class="banner warn">${esc(text)}</div>`);
+  }
+  box.innerHTML = parts.join('');
+  const btn = document.getElementById('dismiss-migration-btn');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      await api('/api/notices/migration/dismiss', { method: 'POST' });
+      loadBanners();
+    });
+  }
+}
+
+// ── session ────────────────────────────────────────────────
+
+async function boot() {
+  loadBanners();
+  const session = await api('/api/admin/session');
+  const loginView = document.getElementById('login-view');
+  const adminView = document.getElementById('admin-view');
+  if (session.authenticated) {
+    loginView.style.display = 'none';
+    adminView.style.display = 'block';
+    await loadProviderTypes();
+    await loadAllSections();
+    return;
+  }
+  adminView.style.display = 'none';
+  loginView.style.display = 'block';
+  const configured = session.password_configured;
+  document.getElementById('login-form').style.display = configured ? 'block' : 'none';
+  document.getElementById('login-unconfigured').style.display = configured ? 'none' : 'block';
+}
+
+// Task 10 extends this to refresh the other panels too.
+async function loadAllSections() {
+  await loadInstances();
+}
+
+async function doLogin() {
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  try {
+    await api('/api/admin/login', {
+      method: 'POST',
+      body: { password: document.getElementById('password-input').value },
+    });
+  } catch (e) {
+    err.textContent = e.message;
+    return;
+  }
+  document.getElementById('password-input').value = '';
+  boot();
+}
+
+async function doLogout() {
+  await api('/api/admin/logout', { method: 'POST' });
+  boot();
+}
+
+// ── instances ──────────────────────────────────────────────
+
+async function loadProviderTypes() {
+  PROVIDER_TYPES = await api('/api/admin/provider-types');
+}
+
+async function loadInstances() {
+  const data = await api('/api/admin/instances');
+  INSTANCES = data.instances;
+  INSTANCE_ERRORS = data.errors || {};
+  renderInstances();
+}
+
+function renderInstances() {
+  const body = document.getElementById('instances-body');
+  document.getElementById('instances-empty').style.display =
+    INSTANCES.length ? 'none' : 'block';
+  body.innerHTML = INSTANCES.map(inst => {
+    const error = INSTANCE_ERRORS[inst.instance_id];
+    const classes = [];
+    if (!inst.enabled) classes.push('row-disabled');
+    if (error) classes.push('row-error');
+    const typeName = (typeByName(inst.type) || {}).display_name || inst.type;
+    return `<tr class="${classes.join(' ')}">
+      <td>${esc(inst.label)}<div class="muted">${esc(inst.instance_id)}</div>
+        ${error ? `<div class="row-error-msg">${esc(error)}</div>` : ''}</td>
+      <td>${esc(typeName)}</td>
+      <td>${esc(inst.mode)}</td>
+      <td class="num"><input type="number" value="${inst.order}"
+          data-order-for="${esc(inst.instance_id)}"></td>
+      <td>${inst.enabled ? '启用' : '停用'}</td>
+      <td class="row">
+        <button class="link" data-edit="${esc(inst.instance_id)}">编辑</button>
+        <button class="link" data-delete="${esc(inst.instance_id)}">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  body.querySelectorAll('[data-edit]').forEach(btn => {
+    btn.addEventListener('click', () => openInstanceModal(btn.dataset.edit));
+  });
+  body.querySelectorAll('[data-delete]').forEach(btn => {
+    btn.addEventListener('click', () => deleteInstance(btn.dataset.delete));
+  });
+  body.querySelectorAll('[data-order-for]').forEach(input => {
+    input.addEventListener('change', () => saveOrder(input.dataset.orderFor, input.value));
+  });
+}
+
+async function saveOrder(instanceId, value) {
+  const inst = INSTANCES.find(i => i.instance_id === instanceId);
+  if (!inst) return;
+  const credentials = {};
+  Object.keys(inst.credentials).forEach(name => { credentials[name] = null; });
+  await api(`/api/admin/instances/${encodeURIComponent(instanceId)}`, {
+    method: 'PUT',
+    body: {
+      type: inst.type, mode: inst.mode, label: inst.label,
+      order: Number(value), enabled: inst.enabled, credentials: credentials,
+    },
+  });
+  await loadInstances();
+}
+
+async function deleteInstance(instanceId) {
+  if (!confirm(`删除实例 ${instanceId}？它的历史快照也会一起清除，此操作不可撤销。`)) return;
+  await api(`/api/admin/instances/${encodeURIComponent(instanceId)}`, { method: 'DELETE' });
+  await loadInstances();
+}
+
+function openInstanceModal(instanceId) {
+  EDITING_ID = instanceId || null;
+  const inst = instanceId ? INSTANCES.find(i => i.instance_id === instanceId) : null;
+
+  document.getElementById('modal-title').textContent = inst ? '编辑实例' : '新建实例';
+  document.getElementById('modal-error').textContent = '';
+  document.getElementById('modal-test-result').innerHTML = '';
+
+  const idInput = document.getElementById('modal-instance-id');
+  idInput.value = inst ? inst.instance_id : '';
+  idInput.disabled = !!inst;
+  document.getElementById('modal-instance-id-help').textContent = inst
+    ? '实例 ID 不可修改，改名请删除后重建。'
+    : 'push 实例的推送 URL 会用到它，只能包含字母、数字、点、下划线、连字符。';
+
+  const typeSelect = document.getElementById('modal-type');
+  typeSelect.innerHTML = PROVIDER_TYPES
+    .map(t => `<option value="${esc(t.name)}">${esc(t.display_name)}</option>`)
+    .join('');
+  typeSelect.value = inst ? inst.type : (PROVIDER_TYPES[0] || {}).name;
+
+  document.getElementById('modal-label').value = inst ? inst.label : '';
+  document.getElementById('modal-order').value = inst ? inst.order : 999;
+  document.getElementById('modal-enabled').checked = inst ? inst.enabled : true;
+
+  onTypeChanged(inst ? inst.mode : null);
+  document.getElementById('modal-backdrop').style.display = 'flex';
+}
+
+function closeInstanceModal() {
+  document.getElementById('modal-backdrop').style.display = 'none';
+  EDITING_ID = null;
+}
+
+function onTypeChanged(preferredMode) {
+  const t = typeByName(document.getElementById('modal-type').value);
+  const summary = document.getElementById('modal-type-summary');
+  if (!t) { summary.textContent = ''; return; }
+  summary.innerHTML = esc(t.summary)
+    + (t.doc_url ? ` <a href="${esc(t.doc_url)}" target="_blank" rel="noopener">项目地址</a>` : '');
+
+  const modeSelect = document.getElementById('modal-mode');
+  modeSelect.innerHTML = t.modes.map(m => `<option value="${m}">${m}</option>`).join('');
+  modeSelect.value = t.modes.includes(preferredMode) ? preferredMode : t.modes[0];
+  modeSelect.disabled = t.modes.length === 1;
+
+  renderCredentialFields();
+}
+
+function renderCredentialFields() {
+  const t = typeByName(document.getElementById('modal-type').value);
+  const mode = document.getElementById('modal-mode').value;
+  const box = document.getElementById('modal-credentials');
+  if (!t || !t.fields.length) { box.innerHTML = ''; return; }
+
+  const inst = EDITING_ID ? INSTANCES.find(i => i.instance_id === EDITING_ID) : null;
+  const stored = (inst && inst.type === t.name) ? inst.credentials : {};
+
+  box.innerHTML = t.fields.map(f => {
+    const required = f.required_in.includes(mode);
+    const masked = stored[f.name] || '';
+    // Editing a secret shows the mask; the reveal button swaps in the real
+    // value. An untouched masked value is sent as null = "keep as is".
+    const value = f.secret ? masked : (stored[f.name] || '');
+    return `<div class="field">
+      <label class="${required ? 'req' : ''}" for="cred-${esc(f.name)}">${esc(f.label)}</label>
+      <div class="row" style="flex-wrap:nowrap;">
+        <input id="cred-${esc(f.name)}" data-cred="${esc(f.name)}"
+               data-secret="${f.secret ? '1' : '0'}"
+               data-masked="${f.secret && masked ? '1' : '0'}"
+               value="${esc(value)}" placeholder="${esc(f.placeholder)}">
+        ${(f.secret && masked && inst)
+          ? `<button class="link" data-reveal="${esc(f.name)}">显示</button>` : ''}
+      </div>
+      ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('[data-reveal]').forEach(btn => {
+    btn.addEventListener('click', () => revealSecret(btn.dataset.reveal, btn));
+  });
+  box.querySelectorAll('[data-cred]').forEach(input => {
+    input.addEventListener('input', () => { input.dataset.masked = '0'; });
+  });
+}
+
+async function revealSecret(fieldName, btn) {
+  const data = await api(
+    `/api/admin/instances/${encodeURIComponent(EDITING_ID)}/secrets`
+  );
+  const input = document.querySelector(`[data-cred="${fieldName}"]`);
+  input.value = (data.credentials || {})[fieldName] || '';
+  input.dataset.masked = '0';
+  btn.remove();
+}
+
+function collectCredentials() {
+  const out = {};
+  document.querySelectorAll('[data-cred]').forEach(input => {
+    // Still showing the mask -> send null so the server keeps the stored value.
+    out[input.dataset.cred] = input.dataset.masked === '1' ? null : input.value;
+  });
+  return out;
+}
+
+async function saveInstance() {
+  const err = document.getElementById('modal-error');
+  err.textContent = '';
+  const payload = {
+    type: document.getElementById('modal-type').value,
+    mode: document.getElementById('modal-mode').value,
+    label: document.getElementById('modal-label').value,
+    order: Number(document.getElementById('modal-order').value || 999),
+    enabled: document.getElementById('modal-enabled').checked,
+    credentials: collectCredentials(),
+  };
+  try {
+    if (EDITING_ID) {
+      await api(`/api/admin/instances/${encodeURIComponent(EDITING_ID)}`, {
+        method: 'PUT', body: payload,
+      });
+    } else {
+      payload.instance_id = document.getElementById('modal-instance-id').value.trim();
+      // Creating: an empty box means empty, never "keep as is".
+      Object.keys(payload.credentials).forEach(k => {
+        if (payload.credentials[k] === null) payload.credentials[k] = '';
+      });
+      await api('/api/admin/instances', { method: 'POST', body: payload });
+    }
+  } catch (e) {
+    err.textContent = e.message;
+    return;
+  }
+  closeInstanceModal();
+  await loadInstances();
+}
+
+async function testConnection() {
+  const box = document.getElementById('modal-test-result');
+  box.innerHTML = '<span class="muted">测试中…</span>';
+  const credentials = {};
+  Object.entries(collectCredentials()).forEach(([k, v]) => {
+    if (v !== null) credentials[k] = v;
+  });
+  let data;
+  try {
+    data = await api('/api/admin/instances/test', {
+      method: 'POST',
+      body: {
+        type: document.getElementById('modal-type').value,
+        mode: document.getElementById('modal-mode').value,
+        instance_id: document.getElementById('modal-instance-id').value.trim(),
+        credentials: credentials,
+      },
+    });
+  } catch (e) {
+    box.innerHTML = `<span class="error">${esc(e.message)}</span>`;
+    return;
+  }
+  if (data.push) {
+    const p = data.push;
+    box.innerHTML = `<div>推送地址：<code>${esc(p.url)}</code></div>
+      <div>推送认证：${p.push_auth_configured ? '已配置' : '<span class="error">未配置 push_auth_secret</span>'}</div>
+      <div class="muted" style="margin-top:0.4rem;">请求体格式：</div>
+      <pre>${esc(JSON.stringify(p.payload_schema, null, 2))}</pre>`;
+    return;
+  }
+  if (!data.ok) {
+    box.innerHTML = `<span class="error">失败：${esc(data.error)}</span>`;
+    return;
+  }
+  const s = data.summary || {};
+  box.innerHTML = `<span class="ok">连接成功。</span>
+    ${s.membership_level ? `<div>套餐：${esc(s.membership_level)}</div>` : ''}
+    ${(s.limits || []).map(l => `<div>${esc(l)}</div>`).join('')}
+    ${Object.entries(s.balances || {}).map(([k, v]) =>
+      `<div>${esc(k)}：${esc(v)}</div>`).join('')}`;
+}
+
+document.getElementById('login-btn').addEventListener('click', doLogin);
+document.getElementById('password-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('logout-btn').addEventListener('click', doLogout);
+document.getElementById('new-instance-btn').addEventListener('click', () => openInstanceModal(null));
+document.getElementById('modal-cancel-btn').addEventListener('click', closeInstanceModal);
+document.getElementById('modal-save-btn').addEventListener('click', saveInstance);
+document.getElementById('modal-test-btn').addEventListener('click', testConnection);
+document.getElementById('modal-type').addEventListener('change', () => onTypeChanged(null));
+document.getElementById('modal-mode').addEventListener('change', renderCredentialFields);
+
+boot();
+</script>
+</body>
+</html>
