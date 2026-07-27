@@ -8,7 +8,10 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config", default=None,
-        help="Path to configuration file (default: config.json in the project root).",
+        help=(
+            "旧版 config.json 的迁移源路径，同时决定 usage.db 的默认位置 "
+            "(default: config.json in the project root)."
+        ),
     )
     parser.add_argument(
         "--usage-db", default=None,

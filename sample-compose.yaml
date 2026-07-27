@@ -5,8 +5,11 @@ services:
       - "8000:8000"
     command: python -m ai_plan_insight --web --host 0.0.0.0 --port 8000 --config /data/config.json
     volumes:
-      # 目录中放 config.json 和 config.v2.json，usage.db 也会生成在这里
+      # usage.db（配置 + 历史数据）会生成在这个目录里；
+      # 从旧版升级时把 config.json 也放进来，首次启动会自动导入并备份。
       - ./data:/data
     environment:
       - TZ=Asia/Shanghai
+      # 首次启动用它初始化管理密码，之后以数据库里的为准。
+      - ADMIN_PASSWORD=换成你自己的密码
     restart: unless-stopped

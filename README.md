@@ -51,7 +51,7 @@ docker pull git.mitsea.com/flintylemming/ai-plan-insight:latest
 
 ### 运行容器
 
-准备一个配置目录（如 `~/ai-plan-insight`），放入下文的配置文件 `config.json`，然后挂载到容器：
+准备一个数据目录（如 `~/ai-plan-insight`），挂载到容器：
 
 ```bash
 docker run -d \
@@ -60,13 +60,14 @@ docker run -d \
   --log-opt max-file=3 \
   -p 8000:8000 \
   -v ~/ai-plan-insight:/data \
+  -e ADMIN_PASSWORD=换成你自己的密码 \
   git.mitsea.com/flintylemming/ai-plan-insight:latest \
   python -m ai_plan_insight --web --host 0.0.0.0 --port 8000 --config /data/config.json
 ```
 
-容器启动后访问 `http://localhost:8000` 查看 Web 界面。
+容器启动后访问 `http://localhost:8000` 查看看板，`http://localhost:8000/admin` 进入管理页（用 `ADMIN_PASSWORD` 登录）。
 
-SQLite 数据库 `usage.db` 默认生成在配置文件同目录（即 `/data/usage.db`），保存模型用量历史和卡片快照，挂载目录后重启容器不会丢数据。
+全部配置与数据都存在 SQLite 数据库 `usage.db` 里，默认生成在 `--config` 指定的同目录（即 `/data/usage.db`）；挂载该目录后重启容器不会丢配置和历史数据。
 
 ### Docker Compose
 
@@ -84,77 +85,57 @@ docker compose up -d
 | `--web` | 以 Web 服务方式运行（默认且唯一模式） |
 | `--host` | 监听地址，默认 `127.0.0.1` |
 | `--port` | 监听端口，默认 `8765` |
-| `--config` | 配置文件路径（订阅余额实例 + 模型用量 alias + 推送认证） |
+| `--config` | 旧版 `config.json` 的**迁移源**路径；同时决定 `usage.db` 的默认位置。新部署可以指向一个不存在的路径 |
 | `--usage-db` | SQLite 数据库路径，默认取 `--config` 同目录下的 `usage.db` |
 
-### 配置（config.json）
+### 环境变量
 
-订阅余额与模型用量共用唯一配置文件 `config.json`（参考 [config.json.example](config.json.example)）。顶层 `providers` 是订阅余额的实例注册表：key 为实例 ID，值为该实例的类型、模式、标签和凭据；`model_aliases` 是「总模型用量」的模型名别名；`push_auth_secret` / `enforce_push_auth` 是两套推送接口共用的推送认证（见下文「推送认证」）。
+| 变量 | 说明 |
+|---|---|
+| `ADMIN_PASSWORD` | 首次启动时用它初始化管理密码。数据库里已有密码时该变量被忽略（以数据库为准） |
+| `ADMIN_PASSWORD_RESET` | 启动时无条件重置管理密码并踢掉所有登录会话。用完请移除该变量并重启 |
 
-```json
-{
-  "providers": {
-    "claude-personal": {
-      "type": "claude",
-      "mode": "push",
-      "label": "个人号",
-      "order": 12
-    },
-    "claude-work": {
-      "type": "claude",
-      "mode": "push",
-      "label": "工作号",
-      "order": 13
-    },
-    "bigmodel-personal": {
-      "type": "bigmodel",
-      "mode": "fetch",
-      "label": "个人账号",
-      "api_key": "YOUR_BIGMODEL_API_KEY",
-      "order": 20
-    },
-    "kimi-main": {
-      "type": "kimi",
-      "mode": "fetch",
-      "label": "主账号",
-      "api_key": "YOUR_KIMI_API_KEY",
-      "order": 30
-    }
-  },
-  "model_aliases": {
-    "GLM 5.2": ["glm-5.2", "glm5.2"],
-    "GPT 5.2": ["gpt-5.2"],
-    "Claude Sonnet 4.5": ["claude-sonnet-4-5", "claude-sonnet-4-5-20250929"]
-  },
-  "push_auth_secret": "your-secret-token",
-  "enforce_push_auth": false
-}
-```
+未设置管理密码时，管理页会提示「未设置管理密码」，所有管理接口返回 `503`——不存在无密码可访问的窗口。
+
+### 管理页
+
+访问 `http://<host>:<port>/admin`，用 `ADMIN_PASSWORD` 登录后即可维护全部配置，不需要 SSH 到服务器改文件。管理页包含：
+
+- **订阅实例**：新建 / 编辑 / 删除实例，调整排序与启用状态。新建时先选类型，页面会显示该类型的用途说明、支持的模式、以及每个凭据字段的中文标签与获取指引；保存前可以点「测试连接」实际拉一次。
+- **模型别名**：把不同来源上报的原始模型 ID 归并到同一个展示名。
+- **推送认证**：`push_auth_secret` 与 `enforce_push_auth`，可一键生成随机 token。
+- **管理密码**：修改密码，或退出所有设备。
+- **导入导出**：整份配置导出为 JSON 备份；导入是整体替换，会二次确认。
 
 实例字段说明：
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| 配置 key（实例 ID） | ✅ | 实例的稳定唯一标识，需匹配 `[A-Za-z0-9._-]+`；push 实例的推送 URL 会用到它，改名相当于换了一个实例 |
-| `type` | ✅ | 服务类型，取值见上方「支持的服务一览」表 |
-| `mode` | ✅ | `fetch` 或 `push`，一个实例只能使用一种采集模式 |
-| `label` | ✅ | 实例展示标签，卡片标题为 `<服务名> · <label>`，如「Claude 订阅 · 工作号」 |
-| `order` | ❌ | 卡片显示顺序，数值越小越靠前，默认 `999`；相同 `order` 按卡片标题稳定排序 |
-| 凭据字段 | 按类型 | fetch 实例按类型填写 `api_key`、`base_url`、`access_key_id` 等，见上表；push 实例不需要凭据 |
+| 实例 ID | ✅ | 实例的稳定唯一标识，需匹配 `[A-Za-z0-9._-]+`；push 实例的推送 URL 会用到它。**创建后不可修改**，改名请删除后重建 |
+| 类型 | ✅ | 服务类型，取值见上方「支持的服务一览」表，以管理页的类型下拉为准 |
+| 模式 | ✅ | `fetch` 或 `push`，只列出该类型支持的选项；只有一种时锁定 |
+| 标签 | ✅ | 实例展示标签，卡片标题为 `<服务名> · <标签>` |
+| 排序 | ❌ | 卡片显示顺序，数值越小越靠前，默认 `999` |
+| 启用 | ❌ | 停用的实例对运行时完全不存在——不拉取、不上卡片、推送到它返回 404 |
+| 凭据 | 按类型 | 按所选类型动态渲染，必填项带星号 |
 
-配置容错加载：顶层结构错误（文件缺失、JSON 解析失败、未知顶层字段）会使整个配置不可用，通过 `GET /api/status/v2` 的 `config_error` 暴露，Web 仍可启动；单实例错误（未知 `type`、非法 `mode`、空 `label`、缺少必填凭据、出现该类型不支持的字段、非法实例 ID）只会跳过该实例并记入 `instance_errors`，其余实例正常加载与显示，余额页上方会提示被忽略的实例数量。修改 `config.json` 后下一次请求即生效，无需重启服务（基于文件修改时间的热重载）。
+改动在管理页保存后立即生效，不需要重启服务。若某一行配置因为版本升级而变得非法（比如某个类型被移除），该行会在管理页标红并附上原因，其余实例照常工作。
 
-- `model_aliases`：把不同来源上报的原始模型 ID 归并为同一个展示名，未配置的模型 ID 原样展示。
-- `push_auth_secret` / `enforce_push_auth`：`POST /api/push/v2/{instance_id}` 与 `POST /api/usage/report` 共用的推送认证，见下文「推送认证」。
+### 从旧版迁移（config.json → 数据库）
 
-### 从旧版迁移（config.v2.json → config.json）
+从 v0.12 及更早版本升级时不需要任何手工操作：
 
-若你已有 `config.v2.json` 与 `config.json` 两份配置：
+1. 启动时如果 `--config` 指向的 `config.json` 存在，且数据库里还没有任何配置，面板会自动把 `providers`、`model_aliases`、`push_auth_secret`、`enforce_push_auth` 全部导入数据库。
+2. 导入成功后，原文件会被改名为 `config.json.bak`（若该名字已被占用则加时间戳后缀，如 `config.json.bak.20260727-103000`）。
+3. 看板与管理页顶部会各显示一条迁移结果提示，包含导入的实例数、别名数、备份文件名，以及因配置非法而被跳过、需要手工重新添加的实例。点「知道了」后不再提示。
 
-1. 将 `config.v2.json` 的 `providers`、`push_auth_secret`、`enforce_push_auth` 合入 `config.json`。
-2. 保留 `config.json` 的 `model_aliases`。
-3. 统一 `push_auth_secret` 为单一值，并同步给所有 push agent 与 ai-usage-agent。
-4. 删除 `config.v2.json`，重启服务（之后修改 `config.json` 无需重启）。
+几种边界情况：
+
+- **数据库里已有配置**：不迁移、不改名，只在日志里 warning，并在页面顶部常驻提示「检测到 config.json，已忽略，配置以数据库为准」。确认无用后手动删除该文件即可消除提示。
+- **`config.json` 解析失败**：不迁移、不改名，页面提示解析错误原文。修好文件后重启，或直接在管理页手工录入。
+- **备份改名失败**（只读挂载等）：配置已经进了数据库，不会回滚；日志记 error，下次启动会走「数据库里已有配置」分支，不会重复导入。
+
+[config.json.example](config.json.example) 保留，仅用于从旧版迁移时参考格式，新部署不需要它。
 
 ## 数据获取逻辑（订阅余额）
 
@@ -178,7 +159,9 @@ Web 模式下提供以下接口。
 - `GET /api/usage/timeseries?days=30` — 返回用量趋势数据，`days` 支持 7 / 30 / 90
 - `GET /api/sources/stale` — 列出超过 24 小时未上报的推送来源（Agent 存活告警）
 - `POST /api/sources/{source_id}/dismiss-stale` — 关闭某个来源的告警，直到它再次上报
-- `GET /api/admin/sources` — 返回各推送来源的认证状态
+- `GET /api/admin/sources` — 返回各推送来源的认证状态（需登录）
+
+管理接口：`/api/admin/*` 全部需要登录（`GET /api/admin/session` 与 `POST /api/admin/login` 除外）。`GET /api/notices` 与 `POST /api/notices/migration/dismiss` 是公开的只读提示接口，不含任何凭据。只读看板与两个推送接口的鉴权方式没有变化。
 
 ## 用量推送 (Push API)
 
@@ -190,7 +173,7 @@ Authorization: Bearer <push_auth_secret>
 Content-Type: application/json
 ```
 
-`instance_id` 即 `config.json` 的 `providers` 中的配置 key，必须预先声明；请求 body 按实例的 `type` 使用对应的 payload 格式。错误响应：
+`instance_id` 即在管理页创建实例时填写的实例 ID，必须预先创建；请求 body 按实例的 `type` 使用对应的 payload 格式。错误响应：
 
 | 状态码 | 含义 |
 |---|---|
@@ -351,8 +334,8 @@ curl -X POST http://localhost:8000/api/usage/report \
 Authorization: Bearer <push_auth_secret>
 ```
 
-`POST /api/push/v2/{instance_id}` 与 `POST /api/usage/report` 共用 `config.json` 顶层的唯一 `push_auth_secret`，所有 push 实例与模型用量上报使用同一个 token。
+`POST /api/push/v2/{instance_id}` 与 `POST /api/usage/report` 共用唯一的 `push_auth_secret`，所有 push 实例与模型用量上报使用同一个 token。在管理页的「推送认证」区设置，可一键生成随机值。
 
-`enforce_push_auth` 为 `false`（默认）时，token 缺失或错误的请求仍会被接受，只记录为未认证，便于逐个迁移客户端；全部客户端更新完毕后改为 `true`，未认证请求将返回 `401 Unauthorized`。
+`enforce_push_auth` 为 `false`（默认）时，token 缺失或错误的请求仍会被接受，只记录为未认证，便于逐个迁移客户端；全部客户端更新完毕后在管理页勾选「强制校验」，未认证请求将返回 `401 Unauthorized`。
 
-对于模型用量上报，可通过 `GET /api/admin/sources` 查看各来源的认证状态；当所有 `auth_valid` 都为 `true` 时即可放心开启 `enforce_push_auth`。
+对于模型用量上报，可通过 `GET /api/admin/sources` 查看各来源的认证状态；当所有 `auth_valid` 都为 `true` 时即可放心开启强制校验。
