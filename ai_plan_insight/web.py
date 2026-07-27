@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
-from . import pricing, usage_store
+from . import config_store, pricing, usage_store
 from .api_schemas import UsageReportRequest, UsageTimeseriesResponse
 from .config_service import ConfigService
 from .instance_config import DEFAULT_CONFIG_PATH
@@ -105,8 +105,7 @@ def _init_v2_manager() -> None:
     global _v2_manager, _config_service
     from .provider_instances import V2RuntimeManager
 
-    config_path = Path(_config_path) if _config_path else DEFAULT_CONFIG_PATH
-    _config_service = ConfigService(config_path)
+    _config_service = ConfigService(resolve_usage_db_path())
     result = _config_service.get()
 
     if result.config_error is not None:
@@ -131,6 +130,10 @@ async def lifespan(app: FastAPI):
         usage_store.init_db(resolve_usage_db_path())
     except Exception as e:
         logger.error("usage DB init failed: %s", e)
+    try:
+        config_store.init_config_db(resolve_usage_db_path())
+    except Exception as e:
+        logger.error("config DB init failed: %s", e)
     _init_v2_manager()
     if _v2_manager and _v2_manager.enabled:
         _v2_manager.start()
@@ -436,7 +439,7 @@ async def usage_timeseries(days: int = 90):
 @app.get("/api/usage/v2")
 async def get_usage_v2():
     if _config_service is not None:
-        _config_service.get()  # mtime poll; may trigger manager.reload
+        _config_service.get()  # config_version poll; may trigger manager.reload
     if _v2_manager is None or not _v2_manager.enabled:
         return []
     return _v2_manager.get_usage_v2()

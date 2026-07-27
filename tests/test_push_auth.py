@@ -22,15 +22,15 @@ def test_source_auth_columns_added_on_init(tmp_path):
 
 
 def _client(tmp_path, monkeypatch, secret="abc", enforce=False, providers=None):
-    import json
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps({
-        "providers": providers or {},
-        "push_auth_secret": secret,
-        "enforce_push_auth": enforce,
-    }))
-    web._config_path = str(cfg)
-    web._usage_db_path = tmp_path / "usage.db"
+    from config_fixtures import seed_config
+    db = seed_config(
+        tmp_path / "usage.db",
+        providers=providers or {},
+        push_auth_secret=secret,
+        enforce_push_auth=enforce,
+    )
+    web._config_path = str(tmp_path / "config.json")
+    web._usage_db_path = db
     web._v2_manager = None
     web._config_service = None
     return TestClient(web.app)
@@ -77,9 +77,10 @@ def test_report_valid_token_sets_auth_valid(tmp_path, monkeypatch):
 
 
 def test_admin_sources_lists_auth_status(tmp_path, monkeypatch):
-    db = tmp_path / "usage.db"
+    from config_fixtures import seed_config
+    db = seed_config(tmp_path / "usage.db")
+    web._config_path = str(tmp_path / "config.json")
     web._usage_db_path = db
-    usage_store.init_db(db)
     conn = sqlite3.connect(db)
     usage_store.upsert_points(
         conn, source_id="my-agent", source_label="My Agent",

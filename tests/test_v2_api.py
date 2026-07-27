@@ -1,35 +1,25 @@
 # tests/test_v2_api.py
-import json
 import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-
-def _config_json(providers: dict, **top) -> dict:
-    d = {"providers": providers}
-    d.update(top)
-    return d
+from config_fixtures import seed_config
 
 
 @pytest.fixture
-def config_path(tmp_path: Path) -> Path:
-    p = tmp_path / "config.json"
-    p.write_text(json.dumps(_config_json(
-        {
+def client(tmp_path: Path) -> TestClient:
+    import ai_plan_insight.web as web_mod
+    db = seed_config(
+        tmp_path / "usage.db",
+        providers={
             "claude-personal": {"type": "claude", "mode": "push", "label": "个人号", "order": 12},
             "claude-work": {"type": "claude", "mode": "push", "label": "工作号", "order": 13},
         },
         push_auth_secret="test-secret",
         enforce_push_auth=True,
-    )))
-    return p
-
-
-@pytest.fixture
-def client(config_path: Path, tmp_path: Path) -> TestClient:
-    import ai_plan_insight.web as web_mod
-    web_mod._config_path = str(config_path)
-    web_mod._usage_db_path = tmp_path / "usage.db"
+    )
+    web_mod._config_path = str(tmp_path / "config.json")  # never None: see Global Constraints
+    web_mod._usage_db_path = db
     web_mod._v2_manager = None
     web_mod._config_service = None
     from ai_plan_insight.web import app
@@ -151,18 +141,36 @@ class TestV2Push:
         assert data[1]["instance_id"] == "claude-work"
 
 
-class TestV2Disabled:
-    def test_disabled_when_no_config(self, tmp_path: Path):
+class TestEmptyAndBrokenConfig:
+    def test_empty_db_is_enabled_with_no_cards(self, tmp_path: Path):
         import ai_plan_insight.web as web_mod
-        web_mod._config_path = str(tmp_path / "nonexistent.json")
-        web_mod._usage_db_path = tmp_path / "usage.db"
+        db = seed_config(tmp_path / "usage.db")
+        web_mod._config_path = str(tmp_path / "config.json")
+        web_mod._usage_db_path = db
         web_mod._v2_manager = None
         web_mod._config_service = None
         from ai_plan_insight.web import app
         with TestClient(app) as c:
-            resp = c.get("/api/status/v2")
-            assert resp.status_code == 200
-            data = resp.json()
+            data = c.get("/api/status/v2").json()
+            assert data["enabled"] is True
+            assert data["config_error"] is None
+            assert c.get("/api/usage/v2").json() == []
+            # No instance is registered, so a push is a 404, not a 503.
+            assert c.post("/api/push/v2/any", json={}).status_code == 404
+        web_mod._v2_manager = None
+        web_mod._config_service = None
+
+    def test_unopenable_db_disables_v2(self, tmp_path: Path):
+        import ai_plan_insight.web as web_mod
+        unopenable = tmp_path / "not-a-file"
+        unopenable.mkdir()
+        web_mod._config_path = str(tmp_path / "config.json")
+        web_mod._usage_db_path = unopenable
+        web_mod._v2_manager = None
+        web_mod._config_service = None
+        from ai_plan_insight.web import app
+        with TestClient(app) as c:
+            data = c.get("/api/status/v2").json()
             assert data["enabled"] is False
             assert data["config_error"] is not None
             assert c.get("/api/usage/v2").json() == []

@@ -44,16 +44,14 @@ YESTERDAY = (datetime.now(UTC8).date() - timedelta(days=1)).isoformat()
 
 @pytest.fixture
 def usage_db(tmp_path, monkeypatch):
-    """Point web at a temp DB and initialize the schema."""
-    import json
+    """Point web at a temp DB with an initialized, empty config."""
+    from config_fixtures import seed_config
     from ai_plan_insight.config_service import ConfigService
 
-    db = tmp_path / "usage.db"
+    db = seed_config(tmp_path / "usage.db")
     monkeypatch.setattr(web, "_usage_db_path", db)
-    usage_store.init_db(db)
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps({"providers": {}}))
-    monkeypatch.setattr(web, "_config_service", ConfigService(cfg))
+    monkeypatch.setattr(web, "_config_path", str(tmp_path / "config.json"))
+    monkeypatch.setattr(web, "_config_service", ConfigService(db))
     return db
 
 
@@ -164,15 +162,14 @@ def test_timeseries_invalid_days_falls_back_to_90(usage_db, monkeypatch):
 
 
 def test_timeseries_aggregates_across_sources_and_applies_alias(usage_db, monkeypatch, tmp_path):
-    import json
+    from contextlib import closing
+
+    from ai_plan_insight import config_store
     from ai_plan_insight.config_service import ConfigService
 
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps({
-        "providers": {},
-        "model_aliases": {"GLM 5.2": ["glm-5.2"]},
-    }))
-    monkeypatch.setattr(web, "_config_service", ConfigService(cfg))
+    with closing(sqlite3.connect(usage_db)) as conn:
+        config_store.replace_aliases(conn, {"GLM 5.2": ["glm-5.2"]})
+    monkeypatch.setattr(web, "_config_service", ConfigService(usage_db))
     _seed_two_sources(TestClient(web.app))
 
     resp = TestClient(web.app).get("/api/usage/timeseries?days=7")
@@ -338,15 +335,14 @@ class _StubPricing:
 
 def test_timeseries_costs_sum_per_raw_id_across_alias(usage_db, monkeypatch, tmp_path):
     """Merged labels price each raw id at its OWN rate, then sum."""
-    import json
+    from contextlib import closing
+
+    from ai_plan_insight import config_store
     from ai_plan_insight.config_service import ConfigService
 
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps({
-        "providers": {},
-        "model_aliases": {"GLM 5.2": ["glm-5.2", "z-ai/glm-5.2"]},
-    }))
-    monkeypatch.setattr(web, "_config_service", ConfigService(cfg))
+    with closing(sqlite3.connect(usage_db)) as conn:
+        config_store.replace_aliases(conn, {"GLM 5.2": ["glm-5.2", "z-ai/glm-5.2"]})
+    monkeypatch.setattr(web, "_config_service", ConfigService(usage_db))
     client = TestClient(web.app)
     client.post("/api/usage/report", json={"source_id": "m1", "points": [
         {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 1_000_000, "output_tokens": 0}]})

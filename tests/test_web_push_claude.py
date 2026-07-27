@@ -1,4 +1,3 @@
-import json
 import sqlite3
 from pathlib import Path
 from fastapi.testclient import TestClient
@@ -13,16 +12,17 @@ VALID_PAYLOAD = {
 
 
 def _client(tmp_path, monkeypatch, secret="abc", enforce=False):
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps({
-        "providers": {
+    from config_fixtures import seed_config
+    db = seed_config(
+        tmp_path / "usage.db",
+        providers={
             "claude-main": {"type": "claude", "mode": "push", "label": "主力", "order": 1},
         },
-        "push_auth_secret": secret,
-        "enforce_push_auth": enforce,
-    }))
-    web._config_path = str(cfg)
-    web._usage_db_path = tmp_path / "usage.db"
+        push_auth_secret=secret,
+        enforce_push_auth=enforce,
+    )
+    web._config_path = str(tmp_path / "config.json")
+    web._usage_db_path = db
     web._v2_manager = None
     web._config_service = None
     return TestClient(web.app)
