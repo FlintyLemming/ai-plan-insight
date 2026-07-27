@@ -573,10 +573,28 @@
       font-size: 0.78rem;
     }
   }
+  .admin-entry {
+    position: absolute; top: 1.25rem; right: 1rem;
+    font-size: 0.85rem; color: #38bdf8; text-decoration: none;
+  }
+  .admin-entry:hover { text-decoration: underline; }
+  #notice-banners { width: 100%; max-width: 1200px; margin-bottom: 1rem; }
+  .notice-banner {
+    background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+    padding: 0.7rem 0.9rem; margin-bottom: 0.5rem; font-size: 0.85rem;
+    display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start;
+  }
+  .notice-banner.warn { border-color: #b45309; background: #27210f; }
+  .notice-banner button {
+    background: none; border: none; color: #38bdf8; cursor: pointer;
+    font: inherit; padding: 0;
+  }
 </style>
 </head>
 <body>
+  <a class="admin-entry" href="/admin">管理页 →</a>
   <h1>AI Plan Insight</h1>
+  <div id="notice-banners"></div>
   <div class="tab-bar">
     <button class="tab active" data-tab="balance">订阅余额</button>
     <button class="tab" data-tab="usage">模型用量</button>
@@ -632,6 +650,43 @@ function applyTab(tab) {
 }
 
 initTabs();
+
+async function loadDashboardNotices() {
+  let notices;
+  try {
+    const resp = await fetch('/api/notices');
+    notices = await resp.json();
+  } catch (e) { return; }
+  const box = document.getElementById('notice-banners');
+  const parts = [];
+  if (notices.migration) {
+    const s = notices.migration.summary || {};
+    let text = `配置已迁移到数据库：导入了 ${s.instances || 0} 个实例、${s.aliases || 0} 组模型别名。`;
+    if (s.backup_ok) text += ` 原 config.json 已备份为 ${s.backup_path}。`;
+    else text += ` 原 config.json 备份失败，请手动处理。`;
+    text += ' 之后请在管理页维护配置。';
+    parts.push(`<div class="notice-banner"><span>${text}</span>
+      <button id="dismiss-migration">知道了</button></div>`);
+  }
+  if (notices.config_file) {
+    const c = notices.config_file;
+    parts.push(`<div class="notice-banner warn"><span>${
+      c.kind === 'parse_error'
+        ? `检测到 ${c.path}，但它无法解析：${c.error}`
+        : `检测到 ${c.path}，已忽略，配置以数据库为准。`
+    }</span></div>`);
+  }
+  box.innerHTML = parts.join('');
+  const btn = document.getElementById('dismiss-migration');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      await fetch('/api/notices/migration/dismiss', { method: 'POST' });
+      loadDashboardNotices();
+    });
+  }
+}
+
+loadDashboardNotices();
 
 const RANGE_KEY = 'ai-plan-insight:usage-range';
 let usageRange = Number(localStorage.getItem(RANGE_KEY)) || 90;

@@ -127,6 +127,85 @@
         还没有实例，点「新建实例」添加一个。
       </p>
     </section>
+
+    <section class="panel" id="aliases-panel">
+      <h2>模型别名</h2>
+      <p class="muted" style="margin-bottom:0.75rem;">
+        把不同来源上报的原始模型 ID 归并到同一个展示名；未配置的 ID 原样展示。
+      </p>
+      <div id="aliases-rows"></div>
+      <div class="row" style="margin-top:0.75rem;">
+        <button id="alias-add-btn">添加一组</button>
+        <button class="primary" id="alias-save-btn">保存别名</button>
+        <span id="alias-status" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="push-auth-panel">
+      <h2>推送认证</h2>
+      <p class="muted" style="margin-bottom:0.75rem;">
+        <code>POST /api/push/v2/{instance_id}</code> 与 <code>POST /api/usage/report</code>
+        共用这一个 token。
+      </p>
+      <div class="field">
+        <label for="push-secret">push_auth_secret</label>
+        <div class="row" style="flex-wrap:nowrap;">
+          <input id="push-secret" data-masked="1">
+          <button class="link" id="push-secret-reveal-btn">显示</button>
+          <button class="link" id="push-secret-generate-btn">生成随机值</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="row" style="gap:0.4rem;">
+          <input id="enforce-push-auth" type="checkbox" style="width:auto;">
+          <span>强制校验（enforce_push_auth）：关闭时 token 错误只记日志，开启后直接 401</span>
+        </label>
+      </div>
+      <div class="row">
+        <button class="primary" id="push-auth-save-btn">保存推送认证</button>
+        <span id="push-auth-status" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="password-panel">
+      <h2>管理密码</h2>
+      <div class="field">
+        <label for="pwd-old">原密码</label>
+        <input id="pwd-old" type="password" autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label for="pwd-new">新密码</label>
+        <input id="pwd-new" type="password" autocomplete="new-password">
+        <div class="help">至少 8 位。修改成功后其他设备的登录会全部失效。</div>
+      </div>
+      <div class="field">
+        <label for="pwd-confirm">确认新密码</label>
+        <input id="pwd-confirm" type="password" autocomplete="new-password">
+      </div>
+      <div class="row">
+        <button class="primary" id="pwd-save-btn">修改密码</button>
+        <button class="danger" id="logout-all-btn">退出所有设备</button>
+        <span id="pwd-status" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="io-panel">
+      <h2>导入导出</h2>
+      <p class="muted" style="margin-bottom:0.75rem;">
+        导出的 JSON 含明文凭据，请妥善保管；它不包含管理密码。
+      </p>
+      <div class="row" style="margin-bottom:0.9rem;">
+        <button id="export-btn">导出配置</button>
+      </div>
+      <div class="field">
+        <label for="import-text">粘贴配置 JSON</label>
+        <textarea id="import-text" placeholder='{"providers": {...}}'></textarea>
+      </div>
+      <div class="row">
+        <button class="danger" id="import-btn">导入（将覆盖现有全部配置）</button>
+        <span id="io-status" class="muted"></span>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -275,9 +354,10 @@ async function boot() {
   document.getElementById('login-unconfigured').style.display = configured ? 'none' : 'block';
 }
 
-// Task 10 extends this to refresh the other panels too.
 async function loadAllSections() {
   await loadInstances();
+  await loadAliases();
+  await loadPushAuth();
 }
 
 async function doLogin() {
@@ -561,6 +641,202 @@ document.getElementById('modal-save-btn').addEventListener('click', saveInstance
 document.getElementById('modal-test-btn').addEventListener('click', testConnection);
 document.getElementById('modal-type').addEventListener('change', () => onTypeChanged(null));
 document.getElementById('modal-mode').addEventListener('change', renderCredentialFields);
+
+// ── model aliases ──────────────────────────────────────────
+
+let ALIASES = {};
+
+async function loadAliases() {
+  const data = await api('/api/admin/aliases');
+  ALIASES = data.model_aliases || {};
+  renderAliases();
+}
+
+function renderAliases() {
+  const box = document.getElementById('aliases-rows');
+  const entries = Object.entries(ALIASES);
+  box.innerHTML = entries.map(([label, rawIds], i) => `
+    <div class="row" style="margin-bottom:0.5rem; flex-wrap:nowrap;">
+      <input data-alias-label="${i}" value="${esc(label)}" placeholder="展示名">
+      <input data-alias-ids="${i}" value="${esc(rawIds.join(', '))}"
+             placeholder="原始 ID，用逗号分隔">
+      <button class="link" data-alias-remove="${i}">删除</button>
+    </div>`).join('');
+  box.querySelectorAll('[data-alias-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ALIASES = collectAliases();
+      delete ALIASES[Object.keys(ALIASES)[Number(btn.dataset.aliasRemove)]];
+      renderAliases();
+    });
+  });
+}
+
+function collectAliases() {
+  const out = {};
+  document.querySelectorAll('[data-alias-label]').forEach(labelInput => {
+    const i = labelInput.dataset.aliasLabel;
+    const label = labelInput.value.trim();
+    if (!label) return;
+    const raw = document.querySelector(`[data-alias-ids="${i}"]`).value;
+    out[label] = raw.split(',').map(s => s.trim()).filter(Boolean);
+  });
+  return out;
+}
+
+async function saveAliases() {
+  const status = document.getElementById('alias-status');
+  status.className = 'muted';
+  status.textContent = '保存中…';
+  try {
+    await api('/api/admin/aliases', {
+      method: 'PUT', body: { model_aliases: collectAliases() },
+    });
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = e.message;
+    return;
+  }
+  status.className = 'ok';
+  status.textContent = '已保存';
+  await loadAliases();
+}
+
+// ── push auth ──────────────────────────────────────────────
+
+async function loadPushAuth() {
+  const data = await api('/api/admin/push-auth');
+  const input = document.getElementById('push-secret');
+  input.value = data.push_auth_secret;
+  input.dataset.masked = '1';
+  document.getElementById('enforce-push-auth').checked = data.enforce_push_auth;
+  document.getElementById('push-auth-status').textContent = '';
+}
+
+async function revealPushSecret() {
+  const data = await api('/api/admin/push-auth/secret');
+  const input = document.getElementById('push-secret');
+  input.value = data.push_auth_secret;
+  input.dataset.masked = '0';
+}
+
+function generatePushSecret() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const secret = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  const input = document.getElementById('push-secret');
+  input.value = secret;
+  input.dataset.masked = '0';
+}
+
+async function savePushAuth() {
+  const input = document.getElementById('push-secret');
+  const status = document.getElementById('push-auth-status');
+  status.className = 'muted';
+  if (input.dataset.masked === '1') {
+    // The box still shows the mask; reveal first so we never write "sk-••••1234".
+    await revealPushSecret();
+  }
+  status.textContent = '保存中…';
+  try {
+    await api('/api/admin/push-auth', {
+      method: 'PUT',
+      body: {
+        push_auth_secret: input.value,
+        enforce_push_auth: document.getElementById('enforce-push-auth').checked,
+      },
+    });
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = e.message;
+    return;
+  }
+  // loadPushAuth() clears the status line, so set the message after it.
+  await loadPushAuth();
+  status.className = 'ok';
+  status.textContent = '已保存，请同步更新所有 Agent 的 token';
+}
+
+// ── admin password ─────────────────────────────────────────
+
+async function changePassword() {
+  const status = document.getElementById('pwd-status');
+  const oldPwd = document.getElementById('pwd-old').value;
+  const newPwd = document.getElementById('pwd-new').value;
+  const confirmPwd = document.getElementById('pwd-confirm').value;
+  status.className = 'error';
+  if (newPwd !== confirmPwd) { status.textContent = '两次输入的新密码不一致'; return; }
+  if (newPwd.length < 8) { status.textContent = '新密码至少 8 位'; return; }
+  try {
+    await api('/api/admin/password', { method: 'POST', body: { old: oldPwd, new: newPwd } });
+  } catch (e) {
+    status.textContent = e.message;
+    return;
+  }
+  ['pwd-old', 'pwd-new', 'pwd-confirm'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  status.className = 'ok';
+  status.textContent = '已修改，其他设备的登录已失效';
+}
+
+async function logoutAll() {
+  if (!confirm('退出所有设备？包括当前这一个。')) return;
+  await api('/api/admin/logout-all', { method: 'POST' });
+  boot();
+}
+
+// ── export / import ────────────────────────────────────────
+
+async function doExport() {
+  const data = await api('/api/admin/export');
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ai-plan-insight-config.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function doImport() {
+  const status = document.getElementById('io-status');
+  status.className = 'error';
+  let payload;
+  try {
+    payload = JSON.parse(document.getElementById('import-text').value);
+  } catch (e) {
+    status.textContent = 'JSON 解析失败：' + e.message;
+    return;
+  }
+  if (!confirm('导入将覆盖现有全部配置（实例、模型别名、推送认证），确定继续？')) return;
+  try {
+    await api('/api/admin/import', { method: 'POST', body: payload });
+  } catch (e) {
+    const errors = e.detail && e.detail.errors;
+    status.textContent = errors
+      ? e.message + '：' + Object.entries(errors).map(([k, v]) => `${k} → ${v}`).join('；')
+      : e.message;
+    return;
+  }
+  document.getElementById('import-text').value = '';
+  status.className = 'ok';
+  status.textContent = '已导入';
+  await loadAllSections();
+}
+
+document.getElementById('alias-add-btn').addEventListener('click', () => {
+  ALIASES = collectAliases();
+  ALIASES[''] = [];
+  renderAliases();
+});
+document.getElementById('alias-save-btn').addEventListener('click', saveAliases);
+document.getElementById('push-secret-reveal-btn').addEventListener('click', revealPushSecret);
+document.getElementById('push-secret-generate-btn').addEventListener('click', generatePushSecret);
+document.getElementById('push-auth-save-btn').addEventListener('click', savePushAuth);
+document.getElementById('pwd-save-btn').addEventListener('click', changePassword);
+document.getElementById('logout-all-btn').addEventListener('click', logoutAll);
+document.getElementById('export-btn').addEventListener('click', doExport);
+document.getElementById('import-btn').addEventListener('click', doImport);
 
 boot();
 </script>
