@@ -283,3 +283,85 @@ def test_ensure_ready_timeout_never_raises(monkeypatch, tmp_path):
     svc = PricingService(tmp_path / "cache.json")
     asyncio.run(svc.ensure_ready(timeout=0.05))  # must not raise
     assert not svc.ready
+
+
+# ── manual overrides ──────────────────────────────────────────
+
+
+def test_overrides_from_config_converts_per_million_to_per_token():
+    out = pricing.overrides_from_config({
+        "cursor-grok-4.5-high": {
+            "input": 2, "output": 6, "cache_read": 0.5, "cache_write": 1,
+        },
+    })
+    price = out["cursor-grok-4.5-high"]
+    assert price.input == pytest.approx(2 / 1e6)
+    assert price.output == pytest.approx(6 / 1e6)
+    assert price.cache_read == pytest.approx(0.5 / 1e6)
+    assert price.cache_write == pytest.approx(1 / 1e6)
+
+
+def test_overrides_from_config_lowercases_ids():
+    out = pricing.overrides_from_config({"Cursor-GROK": {"input": 1, "output": 2}})
+    assert list(out) == ["cursor-grok"]
+
+
+def test_overrides_from_config_accepts_pydantic_values():
+    from ai_plan_insight.instance_config import ModelPriceConfig
+
+    out = pricing.overrides_from_config({
+        "a": ModelPriceConfig(input=3, output=9),
+    })
+    assert out["a"].input == pytest.approx(3 / 1e6)
+    assert out["a"].cache_write == 0.0
+
+
+def test_overrides_from_config_empty_mapping():
+    assert pricing.overrides_from_config({}) == {}
+
+
+def test_with_overrides_hits_exactly():
+    base = lambda raw_id: None
+    price_of = pricing.with_overrides(
+        base, pricing.overrides_from_config({"a-model": {"input": 1, "output": 2}})
+    )
+    assert price_of("a-model").output == pytest.approx(2 / 1e6)
+
+
+def test_with_overrides_is_case_insensitive():
+    base = lambda raw_id: None
+    price_of = pricing.with_overrides(
+        base, pricing.overrides_from_config({"a-model": {"input": 1, "output": 2}})
+    )
+    assert price_of("A-Model") is not None
+
+
+def test_with_overrides_beats_the_upstream_chain():
+    base = lambda raw_id: ModelPrice(input=99.0, output=99.0)
+    price_of = pricing.with_overrides(
+        base, pricing.overrides_from_config({"a-model": {"input": 1, "output": 2}})
+    )
+    assert price_of("a-model").input == pytest.approx(1 / 1e6)
+
+
+def test_with_overrides_falls_back_on_a_miss():
+    base = lambda raw_id: ModelPrice(input=7.0, output=8.0)
+    price_of = pricing.with_overrides(
+        base, pricing.overrides_from_config({"a-model": {"input": 1, "output": 2}})
+    )
+    assert price_of("other-model").input == 7.0
+
+
+def test_with_overrides_does_not_use_the_candidate_chain():
+    """Exact match only: no ":backend" strip, no "org/" strip, no date strip."""
+    base = lambda raw_id: None
+    price_of = pricing.with_overrides(
+        base, pricing.overrides_from_config({"a-model": {"input": 1, "output": 2}})
+    )
+    assert price_of("a-model:anthropic") is None
+    assert price_of("org/a-model") is None
+
+
+def test_with_overrides_returns_base_unchanged_when_empty():
+    base = lambda raw_id: None
+    assert pricing.with_overrides(base, {}) is base

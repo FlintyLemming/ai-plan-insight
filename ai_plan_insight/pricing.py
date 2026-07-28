@@ -243,6 +243,61 @@ async def _fetch_json(client: httpx.AsyncClient, url: str) -> Any:
     return response.json()
 
 
+# ── manual overrides ──────────────────────────────────────────
+#
+# The boundary between the pricing module and the DB-backed config: config
+# hands over a plain mapping, pricing does the unit conversion and the
+# lookup wrapping. Nothing here touches config_store.
+
+
+def _override_value(spec: Any, key: str) -> float:
+    """Read one price field off a dict or an object with matching attributes."""
+    raw = spec.get(key, 0.0) if isinstance(spec, dict) else getattr(spec, key, 0.0)
+    return _f(raw) / 1_000_000
+
+
+def overrides_from_config(mapping: Any) -> dict[str, ModelPrice]:
+    """{model_id: {input, output, cache_read, cache_write}} → per-token prices.
+
+    Input prices are USD per MILLION tokens (what every vendor's pricing page
+    shows); this is the one place that conversion happens. Keys are lowercased
+    so lookup can be case-insensitive. Values may be dicts or pydantic models
+    (`V2Config.model_prices` holds `ModelPriceConfig` objects).
+    """
+    out: dict[str, ModelPrice] = {}
+    for model_id, spec in (mapping or {}).items():
+        key = str(model_id).strip().lower()
+        if not key:
+            continue
+        out[key] = ModelPrice(
+            _override_value(spec, "input"),
+            _override_value(spec, "output"),
+            _override_value(spec, "cache_read"),
+            _override_value(spec, "cache_write"),
+        )
+    return out
+
+
+def with_overrides(
+    base: Callable[[str], ModelPrice | None], overrides: dict[str, ModelPrice]
+) -> Callable[[str], ModelPrice | None]:
+    """Wrap a price lookup so manual overrides win over every upstream source.
+
+    Matching is EXACT on the case-normalized raw id — deliberately not the
+    `lookup_candidates` chain. The admin panel lists ids by actual usage, so a
+    new variant shows up as its own row instead of silently inheriting some
+    other model's manual price.
+    """
+    if not overrides:
+        return base
+
+    def price_for(raw_id: str) -> ModelPrice | None:
+        hit = overrides.get(raw_id.strip().lower())
+        return hit if hit is not None else base(raw_id)
+
+    return price_for
+
+
 class PricingService:
     """In-memory pricing tables (one dict per source) + on-disk cache.
 
