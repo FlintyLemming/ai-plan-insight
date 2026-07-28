@@ -59,6 +59,7 @@ KNOWN_ORGS = (
     "google",
     "z-ai",
     "x-ai",
+    "xai",  # LiteLLM keys xAI models as "xai/…", OpenRouter as "x-ai/…"
     "deepseek",
     "moonshotai",
     "qwen",

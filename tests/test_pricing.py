@@ -141,6 +141,13 @@ def test_lookup_candidates_org_prepend_variants():
     assert "z-ai/glm-5.2" in cands
 
 
+def test_lookup_candidates_include_both_xai_spellings():
+    """LiteLLM keys xAI as "xai/", OpenRouter as "x-ai/"; both must be tried."""
+    out = lookup_candidates("grok-4.5")
+    assert "xai/grok-4.5" in out
+    assert "x-ai/grok-4.5" in out
+
+
 def test_lookup_candidates_sentinel_has_no_variants():
     # sentinels still get lowercased but never match anything
     assert "unknown" in lookup_candidates("unknown")
