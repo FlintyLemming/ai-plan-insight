@@ -428,6 +428,56 @@ def set_push_auth(conn: sqlite3.Connection, secret: str, enforce: bool) -> None:
     conn.commit()
 
 
+# ── push card ttl ─────────────────────────────────────────────
+
+PUSH_CARD_TTL_KEY = "push_card_ttl_hours"
+PUSH_CARD_TTL_MIN = 0.5
+PUSH_CARD_TTL_DEFAULT = 1.0
+
+
+def validate_push_card_ttl(hours) -> float:
+    """Validate and normalize the push-card display TTL (in hours).
+
+    Must be a real number >= 0.5. `bool` is rejected explicitly so `True`
+    does not silently become 1.0. Returns the value as a float.
+    """
+    if isinstance(hours, bool) or not isinstance(hours, (int, float)):
+        raise ValueError("推送卡片显示时长必须是数字")
+    value = float(hours)
+    if not math.isfinite(value):
+        raise ValueError("推送卡片显示时长必须是有限数值")
+    if value < PUSH_CARD_TTL_MIN:
+        raise ValueError(f"推送卡片显示时长不能小于 {PUSH_CARD_TTL_MIN} 小时")
+    return value
+
+
+def get_push_card_ttl(conn: sqlite3.Connection) -> float:
+    """Read the push-card TTL from app_setting, defaulting to 1.0.
+
+    Never raises: the read path runs inside load_config, and one bad row
+    must not take down the whole config load.
+    """
+    raw = get_setting(conn, PUSH_CARD_TTL_KEY)
+    if raw is None:
+        return PUSH_CARD_TTL_DEFAULT
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return PUSH_CARD_TTL_DEFAULT
+
+
+def set_push_card_ttl(conn: sqlite3.Connection, hours: float) -> None:
+    """Validate, write, bump config_version, commit.
+
+    Mirrors set_push_auth: a scalar config change is always a complete unit
+    of work.
+    """
+    value = validate_push_card_ttl(hours)
+    _set_setting(conn, PUSH_CARD_TTL_KEY, str(value))
+    _bump_version(conn)
+    conn.commit()
+
+
 # ── load ──────────────────────────────────────────────────────
 
 def is_config_empty(conn: sqlite3.Connection) -> bool:

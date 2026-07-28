@@ -319,6 +319,77 @@ class TestPushAuth:
         assert config_store.get_config_version(conn) == before + 1
 
 
+class TestPushCardTtl:
+    def test_default_when_unset(self, conn):
+        assert config_store.get_push_card_ttl(conn) == 1.0
+
+    def test_set_then_get(self, conn):
+        config_store.set_push_card_ttl(conn, 1.5)
+        assert config_store.get_push_card_ttl(conn) == 1.5
+
+    def test_set_bumps_config_version(self, conn):
+        before = config_store.get_config_version(conn)
+        config_store.set_push_card_ttl(conn, 2.0)
+        assert config_store.get_config_version(conn) == before + 1
+
+    def test_set_accepts_int(self, conn):
+        config_store.set_push_card_ttl(conn, 2)
+        assert config_store.get_push_card_ttl(conn) == 2.0
+
+    def test_set_accepts_half_hour_minimum(self, conn):
+        config_store.set_push_card_ttl(conn, 0.5)
+        assert config_store.get_push_card_ttl(conn) == 0.5
+
+
+class TestValidatePushCardTtl:
+    def test_returns_float_for_int(self):
+        assert config_store.validate_push_card_ttl(2) == 2.0
+
+    def test_returns_float_for_float(self):
+        assert config_store.validate_push_card_ttl(1.5) == 1.5
+
+    def test_below_minimum_rejected(self):
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl(0.4)
+
+    def test_zero_rejected(self):
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl(0)
+
+    def test_negative_rejected(self):
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl(-1)
+
+    def test_bool_rejected(self):
+        # True must not silently become 1.0
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl(True)
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl(False)
+
+    def test_string_rejected(self):
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl("1.5")
+
+    def test_nan_rejected(self):
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl(float("nan"))
+
+    def test_inf_rejected(self):
+        with pytest.raises(ValueError):
+            config_store.validate_push_card_ttl(float("inf"))
+
+    def test_minimum_boundary_accepted(self):
+        assert config_store.validate_push_card_ttl(0.5) == 0.5
+
+
+def test_get_push_card_ttl_falls_back_on_garbage_value(conn):
+    # The read path runs inside load_config and must never raise on one bad row.
+    config_store._set_setting(conn, "push_card_ttl_hours", "not-a-number")
+    conn.commit()
+    assert config_store.get_push_card_ttl(conn) == 1.0
+
+
 class TestIsConfigEmpty:
     def test_true_on_fresh_db(self, conn):
         assert config_store.is_config_empty(conn) is True
