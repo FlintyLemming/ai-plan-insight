@@ -416,6 +416,12 @@ class TestIsConfigEmpty:
         config_store.replace_prices(conn, {"a": {"input": 1, "output": 2}})
         assert config_store.is_config_empty(conn) is True
 
+    def test_ttl_alone_still_counts_as_empty(self, conn):
+        # is_config_empty decides whether to run the config.json migration;
+        # the TTL never came from config.json, so it must not block it.
+        config_store.set_push_card_ttl(conn, 2.0)
+        assert config_store.is_config_empty(conn) is True
+
 
 class TestLoadConfig:
     def test_empty_db_loads_empty_config(self, conn):
@@ -479,6 +485,14 @@ class TestLoadConfig:
 
     def test_empty_db_has_no_model_prices(self, conn):
         assert config_store.load_config(conn).config.model_prices == {}
+
+    def test_carries_push_card_ttl(self, conn):
+        config_store.set_push_card_ttl(conn, 2.5)
+        cfg = config_store.load_config(conn).config
+        assert cfg.push_card_ttl_hours == 2.5
+
+    def test_empty_db_uses_default_ttl(self, conn):
+        assert config_store.load_config(conn).config.push_card_ttl_hours == 1.0
 
 
 class TestExportImport:

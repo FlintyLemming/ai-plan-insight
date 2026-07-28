@@ -89,6 +89,7 @@ class V2Config(BaseModel):
     model_prices: dict[str, ModelPriceConfig] = Field(default_factory=dict)
     push_auth_secret: str = ""
     enforce_push_auth: bool = False
+    push_card_ttl_hours: float = 1.0
 
     @property
     def alias_lookup(self) -> dict[str, str]:

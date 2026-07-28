@@ -279,3 +279,22 @@ class TestV2ConfigPrices:
         result = load_v2_config(str(path))
         assert result.config_error is not None
         assert "model_prices" in result.config_error
+
+
+class TestV2ConfigPushCardTtl:
+    def test_default_is_one_hour(self):
+        cfg = V2Config(providers={})
+        assert cfg.push_card_ttl_hours == 1.0
+
+    def test_can_be_overridden(self):
+        cfg = V2Config(providers={}, push_card_ttl_hours=0.5)
+        assert cfg.push_card_ttl_hours == 0.5
+
+    def test_config_json_loader_still_rejects_push_card_ttl(self, tmp_path):
+        # config.json is frozen as the migration source; the TTL never came
+        # from it, so the field stays an unknown top-level key there.
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"providers": {}, "push_card_ttl_hours": 1.0}))
+        result = load_v2_config(str(path))
+        assert result.config_error is not None
+        assert "push_card_ttl_hours" in result.config_error
