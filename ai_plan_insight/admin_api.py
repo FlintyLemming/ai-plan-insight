@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import closing as _closing
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -92,6 +93,15 @@ class AliasesRequest(BaseModel):
     model_config = {"protected_namespaces": ()}
 
     model_aliases: dict[str, list[str]]
+
+
+class ModelPricesRequest(BaseModel):
+    # `model_prices` collides with Pydantic's protected `model_` namespace.
+    model_config = {"protected_namespaces": ()}
+
+    # Deliberately untyped values: config_store.validate_prices owns the
+    # rules, so every rejection carries the same message the store would give.
+    model_prices: dict[str, Any]
 
 
 class PushAuthRequest(BaseModel):
@@ -297,6 +307,80 @@ async def put_aliases(req: AliasesRequest):
     with closing_conn() as conn:
         try:
             config_store.replace_aliases(conn, req.model_aliases)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+# ── model prices ──────────────────────────────────────────────
+
+PRICE_WINDOW_DAYS = 90
+
+
+def _price_rows(
+    usage: list[tuple[str, int]], overrides: dict[str, dict], price_of
+) -> list[dict]:
+    """Rows for the price panel: unpriced-in-window ∪ already-overridden.
+
+    Usage-derived rows keep their busiest-first order; overrides with no usage
+    in the window are appended (id-sorted, zero tokens) so every override stays
+    visible, editable and deletable even after upstream learns the model.
+    """
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for model_id, total in usage:
+        key = model_id.strip().lower()
+        if key in seen:
+            continue
+        if key not in overrides and price_of(model_id) is not None:
+            continue
+        seen.add(key)
+        rows.append({
+            "model_id": model_id,
+            "total_tokens": total,
+            "price": overrides.get(key),
+        })
+    for key in sorted(overrides):
+        if key not in seen:
+            rows.append({"model_id": key, "total_tokens": 0, "price": overrides[key]})
+    return rows
+
+
+@protected.get("/model-prices")
+async def get_model_prices():
+    """Models that need a manual price, plus every price already entered.
+
+    While the pricing data is not ready, "upstream has no price" is true for
+    everything, so the list would be garbage — report `pricing_ready: false`
+    and let the panel ask the user to refresh later.
+    """
+    from . import web  # lazy: web imports admin_api at import time
+
+    service = web._pricing_service
+    empty = {
+        "window_days": PRICE_WINDOW_DAYS, "pricing_ready": False, "models": [],
+    }
+    if service is None:
+        return empty
+    await service.ensure_ready()  # bounded wait; never raises
+    if not service.ready:
+        return empty
+
+    with closing_conn() as conn:
+        overrides = config_store.get_prices(conn)
+        usage = usage_store.list_raw_model_usage(conn, PRICE_WINDOW_DAYS)
+    return {
+        "window_days": PRICE_WINDOW_DAYS,
+        "pricing_ready": True,
+        "models": _price_rows(usage, overrides, service.price_for),
+    }
+
+
+@protected.put("/model-prices")
+async def put_model_prices(req: ModelPricesRequest):
+    with closing_conn() as conn:
+        try:
+            config_store.replace_prices(conn, req.model_prices)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}

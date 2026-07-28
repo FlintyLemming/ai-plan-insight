@@ -1,12 +1,15 @@
 import sqlite3
 from contextlib import closing
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from config_fixtures import ADMIN_PASSWORD, login, seed_admin_password, seed_config
 
-from ai_plan_insight import admin_auth, config_store, web
+from ai_plan_insight import admin_auth, config_store, usage_store, web
+from ai_plan_insight.pricing import ModelPrice
+from ai_plan_insight.usage_store import UTC8
 
 PROVIDERS = {
     "kimi-main": {"type": "kimi", "mode": "fetch", "label": "主账号",
@@ -395,6 +398,164 @@ class TestAliases:
         assert client.get("/api/admin/aliases").status_code == 401
 
 
+class _StubPricing:
+    """Test double for web._pricing_service (no network, deterministic)."""
+
+    def __init__(self, table=None, ready=True):
+        self._table = table or {}
+        self.ready = ready
+
+    async def ensure_ready(self, timeout=5.0):
+        pass
+
+    def price_for(self, raw_id):
+        return self._table.get(raw_id.strip().lower())
+
+    def stop_background(self):
+        # the TestClient lifespan calls this on shutdown
+        pass
+
+
+def _seed_usage(db, tokens_by_model, days_ago=0):
+    """Write one day's usage for several models in ONE upsert.
+
+    upsert_points wipes the whole (date, source_id) slice first, so seeding
+    two models in two calls would lose the first one.
+    """
+    date = (datetime.now(UTC8).date() - timedelta(days=days_ago)).isoformat()
+    with closing(sqlite3.connect(db)) as conn:
+        usage_store.upsert_points(conn, "m1", None, [
+            {"date": date, "model_id": model_id,
+             "input_tokens": tokens, "output_tokens": 0}
+            for model_id, tokens in tokens_by_model.items()
+        ])
+        conn.commit()
+
+
+class TestModelPrices:
+    def test_requires_login(self, client):
+        assert client.get("/api/admin/model-prices").status_code == 401
+        assert client.put(
+            "/api/admin/model-prices", json={"model_prices": {}}
+        ).status_code == 401
+
+    def test_lists_only_models_the_upstream_sources_do_not_know(
+        self, admin, db, monkeypatch
+    ):
+        _seed_usage(db, {"grok-4.5": 100, "cursor-grok-4.5-high": 50})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing({
+            "grok-4.5": ModelPrice(input=1e-6, output=2e-6),
+        }))
+        body = admin.get("/api/admin/model-prices").json()
+        assert body["window_days"] == 90
+        assert body["pricing_ready"] is True
+        assert body["models"] == [
+            {"model_id": "cursor-grok-4.5-high", "total_tokens": 50, "price": None},
+        ]
+
+    def test_orders_unpriced_models_by_tokens_desc(self, admin, db, monkeypatch):
+        _seed_usage(db, {"small": 5, "big": 500})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        assert [m["model_id"] for m in models] == ["big", "small"]
+
+    def test_shows_the_stored_price_for_a_filled_row(self, admin, db, monkeypatch):
+        _seed_usage(db, {"cursor-grok": 50})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        admin.put("/api/admin/model-prices", json={
+            "model_prices": {"cursor-grok": {"input": 2, "output": 6}},
+        })
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        assert models[0]["price"] == {
+            "input": 2.0, "output": 6.0, "cache_read": 0.0, "cache_write": 0.0,
+        }
+
+    def test_overridden_model_stays_listed_even_with_an_upstream_price(
+        self, admin, db, monkeypatch
+    ):
+        """Otherwise the row vanishes the day upstream learns the model,
+        while the override keeps silently applying."""
+        _seed_usage(db, {"grok-4.5": 100})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing({
+            "grok-4.5": ModelPrice(input=1e-6, output=2e-6),
+        }))
+        admin.put("/api/admin/model-prices", json={
+            "model_prices": {"grok-4.5": {"input": 2, "output": 6}},
+        })
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        assert [m["model_id"] for m in models] == ["grok-4.5"]
+
+    def test_override_without_recent_usage_is_listed_last_with_zero_tokens(
+        self, admin, db, monkeypatch
+    ):
+        _seed_usage(db, {"busy": 100})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        admin.put("/api/admin/model-prices", json={
+            "model_prices": {"retired-model": {"input": 1, "output": 1}},
+        })
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        assert [m["model_id"] for m in models] == ["busy", "retired-model"]
+        assert models[-1]["total_tokens"] == 0
+
+    def test_usage_outside_the_window_is_not_listed(self, admin, db, monkeypatch):
+        _seed_usage(db, {"ancient": 100}, days_ago=100)
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        assert admin.get("/api/admin/model-prices").json()["models"] == []
+
+    def test_not_ready_returns_no_models(self, admin, db, monkeypatch):
+        _seed_usage(db, {"cursor-grok": 50})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing(ready=False))
+        body = admin.get("/api/admin/model-prices").json()
+        assert body["pricing_ready"] is False
+        assert body["models"] == []
+
+    def test_missing_pricing_service_reads_as_not_ready(self, admin, db, monkeypatch):
+        _seed_usage(db, {"cursor-grok": 50})
+        monkeypatch.setattr(web, "_pricing_service", None)
+        body = admin.get("/api/admin/model-prices").json()
+        assert body["pricing_ready"] is False
+        assert body["models"] == []
+
+    def test_put_saves_and_replaces_wholesale(self, admin, db, monkeypatch):
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        admin.put("/api/admin/model-prices", json={
+            "model_prices": {"a": {"input": 1, "output": 2}},
+        })
+        resp = admin.put("/api/admin/model-prices", json={
+            "model_prices": {"b": {"input": 3, "output": 4}},
+        })
+        assert resp.status_code == 200
+        with closing(sqlite3.connect(db)) as conn:
+            assert list(config_store.get_prices(conn)) == ["b"]
+
+    def test_put_with_an_empty_mapping_clears_every_override(self, admin, db):
+        admin.put("/api/admin/model-prices", json={
+            "model_prices": {"a": {"input": 1, "output": 2}},
+        })
+        assert admin.put(
+            "/api/admin/model-prices", json={"model_prices": {}}
+        ).status_code == 200
+        with closing(sqlite3.connect(db)) as conn:
+            assert config_store.get_prices(conn) == {}
+
+    def test_put_rejects_a_cache_only_row(self, admin):
+        resp = admin.put("/api/admin/model-prices", json={
+            "model_prices": {"a": {"cache_read": 1}},
+        })
+        assert resp.status_code == 422
+        assert "input" in resp.json()["detail"]
+
+    def test_put_rejects_a_negative_price(self, admin):
+        assert admin.put("/api/admin/model-prices", json={
+            "model_prices": {"a": {"input": -1, "output": 2}},
+        }).status_code == 422
+
+    def test_put_rejects_an_unknown_price_key(self, admin):
+        assert admin.put("/api/admin/model-prices", json={
+            "model_prices": {"a": {"input": 1, "output": 2, "cache-read": 1}},
+        }).status_code == 422
+
+
 class TestPushAuthEndpoint:
     def test_get_masks_the_secret(self, admin):
         data = admin.get("/api/admin/push-auth").json()
@@ -442,6 +603,16 @@ class TestExportImport:
             assert [r.instance_id for r in config_store.list_instances(conn)] == ["only-one"]
             assert config_store.get_aliases(conn) == {"A": ["x"]}
             assert config_store.get_push_auth(conn) == ("imported", False)
+
+    def test_export_and_import_carry_model_prices(self, admin, db):
+        assert admin.put("/api/admin/model-prices", json={
+            "model_prices": {"cursor-grok": {"input": 2, "output": 6}},
+        }).status_code == 200
+        exported = admin.get("/api/admin/export").json()
+        assert exported["model_prices"]["cursor-grok"]["input"] == 2.0
+        assert admin.post("/api/admin/import", json=exported).status_code == 200
+        with closing(sqlite3.connect(db)) as conn:
+            assert list(config_store.get_prices(conn)) == ["cursor-grok"]
 
     def test_import_roundtrips_an_export(self, admin):
         exported = admin.get("/api/admin/export").json()
