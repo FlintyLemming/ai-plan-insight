@@ -492,7 +492,10 @@ async def usage_timeseries(days: int = 90):
     price_of = None
     if _pricing_service is not None:
         await _pricing_service.ensure_ready()  # bounded wait; never raises
-        price_of = _pricing_service.price_for
+        # Manual overrides beat every upstream source; rebuilt per request so
+        # an admin-page save takes effect on the next refresh.
+        overrides = pricing.overrides_from_config(cfg.model_prices) if cfg else {}
+        price_of = pricing.with_overrides(_pricing_service.price_for, overrides)
     return build_timeseries_response(rows, days, price_of)
 
 

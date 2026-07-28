@@ -406,3 +406,63 @@ def test_timeseries_costs_absent_when_pricing_service_none(usage_db, monkeypatch
     m = client.get("/api/usage/timeseries?days=7").json()["all_models"][0]
     assert m["cost_usd"] is None
     assert m["cost_partial"] is False
+
+
+def test_timeseries_prices_a_model_the_upstream_sources_do_not_know(
+    usage_db, monkeypatch
+):
+    from contextlib import closing
+
+    from ai_plan_insight import config_store
+
+    with closing(sqlite3.connect(usage_db)) as conn:
+        config_store.replace_prices(conn, {
+            "cursor-grok-4.5-high": {"input": 2, "output": 6},
+        })
+    monkeypatch.setattr(web, "_pricing_service", _StubPricing({}))
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={"source_id": "m1", "points": [
+        {"date": TODAY, "model_id": "cursor-grok-4.5-high",
+         "input_tokens": 1_000_000, "output_tokens": 1_000_000}]})
+
+    m = client.get("/api/usage/timeseries?days=7").json()["all_models"][0]
+    assert m["cost_usd"] == pytest.approx(8.0)  # 1M × $2/M + 1M × $6/M
+    assert m["cost_partial"] is False
+
+
+def test_timeseries_override_beats_the_upstream_price(usage_db, monkeypatch):
+    from contextlib import closing
+
+    from ai_plan_insight import config_store
+
+    with closing(sqlite3.connect(usage_db)) as conn:
+        config_store.replace_prices(conn, {"glm-5.2": {"input": 3, "output": 1}})
+    monkeypatch.setattr(web, "_pricing_service",
+                        _StubPricing({"glm-5.2": ModelPrice(input=99.0 / 1e6,
+                                                            output=0.0)}))
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={"source_id": "m1", "points": [
+        {"date": TODAY, "model_id": "glm-5.2",
+         "input_tokens": 1_000_000, "output_tokens": 0}]})
+
+    m = client.get("/api/usage/timeseries?days=7").json()["all_models"][0]
+    assert m["cost_usd"] == pytest.approx(3.0)
+
+
+def test_timeseries_override_does_not_leak_to_other_model_ids(usage_db, monkeypatch):
+    """Exact match only — a ":backend" variant is its own model."""
+    from contextlib import closing
+
+    from ai_plan_insight import config_store
+
+    with closing(sqlite3.connect(usage_db)) as conn:
+        config_store.replace_prices(conn, {"cursor-grok": {"input": 2, "output": 6}})
+    monkeypatch.setattr(web, "_pricing_service", _StubPricing({}))
+    client = TestClient(web.app)
+    client.post("/api/usage/report", json={"source_id": "m1", "points": [
+        {"date": TODAY, "model_id": "cursor-grok:fast",
+         "input_tokens": 1_000_000, "output_tokens": 0}]})
+
+    m = client.get("/api/usage/timeseries?days=7").json()["all_models"][0]
+    assert m["cost_usd"] is None
+    assert m["cost_partial"] is True
