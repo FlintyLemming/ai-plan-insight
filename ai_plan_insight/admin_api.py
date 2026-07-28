@@ -109,6 +109,10 @@ class PushAuthRequest(BaseModel):
     enforce_push_auth: bool
 
 
+class DisplaySettingsRequest(BaseModel):
+    push_card_ttl_hours: float
+
+
 class TestConnectionRequest(BaseModel):
     type: str
     mode: str
@@ -406,6 +410,24 @@ async def get_push_auth_secret():
 async def put_push_auth(req: PushAuthRequest):
     with closing_conn() as conn:
         config_store.set_push_auth(conn, req.push_auth_secret, req.enforce_push_auth)
+    return {"ok": True}
+
+
+# ── display settings ──────────────────────────────────────────
+
+@protected.get("/display-settings")
+async def get_display_settings():
+    with closing_conn() as conn:
+        return {"push_card_ttl_hours": config_store.get_push_card_ttl(conn)}
+
+
+@protected.put("/display-settings")
+async def put_display_settings(req: DisplaySettingsRequest):
+    with closing_conn() as conn:
+        try:
+            config_store.set_push_card_ttl(conn, req.push_card_ttl_hours)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
 
 

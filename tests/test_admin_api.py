@@ -579,6 +579,51 @@ class TestPushAuthEndpoint:
         assert client.get("/api/admin/push-auth/secret").status_code == 401
 
 
+class TestDisplaySettings:
+    def test_requires_login(self, client):
+        assert client.get("/api/admin/display-settings").status_code == 401
+        assert client.put(
+            "/api/admin/display-settings", json={"push_card_ttl_hours": 1.5}
+        ).status_code == 401
+
+    def test_get_returns_default(self, admin):
+        assert admin.get("/api/admin/display-settings").json() == {
+            "push_card_ttl_hours": 1.0,
+        }
+
+    def test_get_returns_stored_value(self, admin, db):
+        with closing(sqlite3.connect(db)) as conn:
+            config_store.set_push_card_ttl(conn, 2.5)
+        assert admin.get("/api/admin/display-settings").json() == {
+            "push_card_ttl_hours": 2.5,
+        }
+
+    def test_put_saves_and_get_reflects_it(self, admin, db):
+        resp = admin.put("/api/admin/display-settings", json={
+            "push_card_ttl_hours": 1.5,
+        })
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+        assert admin.get("/api/admin/display-settings").json() == {
+            "push_card_ttl_hours": 1.5,
+        }
+        with closing(sqlite3.connect(db)) as conn:
+            assert config_store.get_push_card_ttl(conn) == 1.5
+
+    def test_put_below_minimum_is_422(self, admin):
+        resp = admin.put("/api/admin/display-settings", json={
+            "push_card_ttl_hours": 0.4,
+        })
+        assert resp.status_code == 422
+        assert "0.5" in resp.json()["detail"]
+
+    def test_put_rejects_non_numeric(self, admin):
+        resp = admin.put("/api/admin/display-settings", json={
+            "push_card_ttl_hours": "soon",
+        })
+        assert resp.status_code == 422
+
+
 class TestExportImport:
     def test_export_contains_plaintext_credentials(self, admin):
         data = admin.get("/api/admin/export").json()
@@ -635,6 +680,16 @@ class TestExportImport:
 
     def test_import_requires_login(self, client):
         assert client.post("/api/admin/import", json={"providers": {}}).status_code == 401
+
+    def test_export_and_import_carry_push_card_ttl(self, admin, db):
+        assert admin.put("/api/admin/display-settings", json={
+            "push_card_ttl_hours": 2.5,
+        }).status_code == 200
+        exported = admin.get("/api/admin/export").json()
+        assert exported["push_card_ttl_hours"] == 2.5
+        assert admin.post("/api/admin/import", json=exported).status_code == 200
+        with closing(sqlite3.connect(db)) as conn:
+            assert config_store.get_push_card_ttl(conn) == 2.5
 
 
 class TestConnectionTest:
