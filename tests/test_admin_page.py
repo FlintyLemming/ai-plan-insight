@@ -115,6 +115,41 @@ class TestAliasesSection:
         assert "展示名" in h
 
 
+class TestPricesSection:
+    def test_panel_present_after_the_aliases_panel(self):
+        h = read_admin()
+        assert 'id="prices-panel"' in h
+        assert "模型价格" in h
+        assert h.index('id="aliases-panel"') < h.index('id="prices-panel"')
+
+    def test_table_headers(self):
+        h = read_admin()
+        for header in ("模型 ID", "近 90 天 Token", "输入", "输出", "缓存读取", "缓存写入"):
+            assert header in h
+
+    def test_explains_the_source_and_the_unit(self):
+        h = read_admin()
+        assert "USD / 百万 Token" in h
+        assert "models.dev" in h
+
+    def test_calls_both_price_endpoints(self):
+        h = read_admin()
+        assert "/api/admin/model-prices" in h
+        assert "function savePrices" in h
+        assert "loadPrices()" in h
+
+    def test_price_inputs_are_nonnegative_numbers(self):
+        assert 'type="number" min="0" step="any"' in read_admin()
+
+    def test_clear_button_present(self):
+        assert "data-price-clear" in read_admin()
+
+    def test_empty_and_not_ready_states(self):
+        h = read_admin()
+        assert "近 90 天内没有缺少价格的模型" in h
+        assert "价格数据尚未就绪，请稍后刷新" in h
+
+
 class TestPushAuthSection:
     def test_secret_reveal_and_generate(self):
         h = read_admin()

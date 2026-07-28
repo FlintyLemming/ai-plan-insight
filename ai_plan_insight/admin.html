@@ -141,6 +141,34 @@
       </div>
     </section>
 
+    <section class="panel" id="prices-panel">
+      <h2>模型价格</h2>
+      <p class="muted" style="margin-bottom:0.75rem;">
+        成本按每个原始模型 ID 的单价计算，价格自动从 LiteLLM / OpenRouter / models.dev 获取；
+        这里只列出这三个源都查不到价的模型，填了才会计入成本。
+        单位 <strong>USD / 百万 Token</strong>，照抄各家定价页即可。
+      </p>
+      <table id="prices-table">
+        <thead>
+          <tr>
+            <th>模型 ID</th><th>近 90 天 Token</th><th>输入</th><th>输出</th>
+            <th>缓存读取</th><th>缓存写入</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="prices-body"></tbody>
+      </table>
+      <p class="muted" id="prices-empty" style="display:none; margin-top:0.75rem;">
+        近 90 天内没有缺少价格的模型。
+      </p>
+      <p class="muted" id="prices-not-ready" style="display:none; margin-top:0.75rem;">
+        价格数据尚未就绪，请稍后刷新。
+      </p>
+      <div class="row" style="margin-top:0.75rem;">
+        <button class="primary" id="price-save-btn">保存价格</button>
+        <span id="price-status" class="muted"></span>
+      </div>
+    </section>
+
     <section class="panel" id="push-auth-panel">
       <h2>推送认证</h2>
       <p class="muted" style="margin-bottom:0.75rem;">
@@ -357,6 +385,7 @@ async function boot() {
 async function loadAllSections() {
   await loadInstances();
   await loadAliases();
+  await loadPrices();
   await loadPushAuth();
 }
 
@@ -701,6 +730,86 @@ async function saveAliases() {
   await loadAliases();
 }
 
+// ── model prices ───────────────────────────────────────────
+
+const PRICE_FIELDS = ['input', 'output', 'cache_read', 'cache_write'];
+
+async function loadPrices() {
+  const data = await api('/api/admin/model-prices');
+  const table = document.getElementById('prices-table');
+  const body = document.getElementById('prices-body');
+  const empty = document.getElementById('prices-empty');
+  const notReady = document.getElementById('prices-not-ready');
+  const saveBtn = document.getElementById('price-save-btn');
+  document.getElementById('price-status').textContent = '';
+
+  if (!data.pricing_ready) {
+    // "no upstream price" is true for everything before the data loads, so
+    // the list would be meaningless — show nothing rather than garbage.
+    body.innerHTML = '';
+    table.style.display = 'none';
+    empty.style.display = 'none';
+    notReady.style.display = 'block';
+    saveBtn.disabled = true;
+    return;
+  }
+  notReady.style.display = 'none';
+  saveBtn.disabled = false;
+
+  const models = data.models || [];
+  table.style.display = models.length ? 'table' : 'none';
+  empty.style.display = models.length ? 'none' : 'block';
+  body.innerHTML = models.map(m => `
+    <tr data-price-row="${esc(m.model_id)}">
+      <td>${esc(m.model_id)}</td>
+      <td>${Number(m.total_tokens).toLocaleString()}</td>
+      ${PRICE_FIELDS.map(f => `<td class="num"><input type="number" min="0" step="any"
+        data-price-field="${f}" value="${m.price ? esc(m.price[f]) : ''}"></td>`).join('')}
+      <td><button class="link" data-price-clear="1">清空</button></td>
+    </tr>`).join('');
+  body.querySelectorAll('[data-price-clear]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.closest('tr').querySelectorAll('[data-price-field]')
+        .forEach(input => { input.value = ''; });
+    });
+  });
+}
+
+function collectPrices() {
+  // A row with all four boxes empty is left out of the payload — that IS how
+  // an override gets deleted. A partly filled row sends 0 for the blanks.
+  const out = {};
+  document.querySelectorAll('[data-price-row]').forEach(tr => {
+    const spec = {};
+    let filled = false;
+    tr.querySelectorAll('[data-price-field]').forEach(input => {
+      const raw = input.value.trim();
+      if (raw !== '') filled = true;
+      spec[input.dataset.priceField] = raw === '' ? 0 : Number(raw);
+    });
+    if (filled) out[tr.dataset.priceRow] = spec;
+  });
+  return out;
+}
+
+async function savePrices() {
+  const status = document.getElementById('price-status');
+  status.className = 'muted';
+  status.textContent = '保存中…';
+  try {
+    await api('/api/admin/model-prices', {
+      method: 'PUT', body: { model_prices: collectPrices() },
+    });
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = e.message;
+    return;
+  }
+  await loadPrices();
+  status.className = 'ok';
+  status.textContent = '已保存';
+}
+
 // ── push auth ──────────────────────────────────────────────
 
 async function loadPushAuth() {
@@ -830,6 +939,7 @@ document.getElementById('alias-add-btn').addEventListener('click', () => {
   renderAliases();
 });
 document.getElementById('alias-save-btn').addEventListener('click', saveAliases);
+document.getElementById('price-save-btn').addEventListener('click', savePrices);
 document.getElementById('push-secret-reveal-btn').addEventListener('click', revealPushSecret);
 document.getElementById('push-secret-generate-btn').addEventListener('click', generatePushSecret);
 document.getElementById('push-auth-save-btn').addEventListener('click', savePushAuth);
