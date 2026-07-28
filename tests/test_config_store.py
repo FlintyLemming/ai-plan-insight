@@ -511,6 +511,7 @@ class TestExportImport:
             "model_prices": {},
             "push_auth_secret": "s3cret",
             "enforce_push_auth": True,
+            "push_card_ttl_hours": 1.0,
         }
 
     def test_export_includes_disabled_instances(self, conn):
@@ -602,8 +603,37 @@ class TestExportImport:
         assert "_model_prices" in exc.value.errors
         assert list(config_store.get_prices(conn)) == ["keep-me"]
 
-    def test_parse_import_payload_returns_five_values(self):
-        rows, aliases, prices, secret, enforce = config_store.parse_import_payload({
-            "providers": {}, "model_prices": {"a": {"input": 1, "output": 2}},
+    def test_export_includes_push_card_ttl(self, conn):
+        config_store.set_push_card_ttl(conn, 2.5)
+        assert config_store.export_config(conn)["push_card_ttl_hours"] == 2.5
+
+    def test_export_uses_default_when_unset(self, conn):
+        assert config_store.export_config(conn)["push_card_ttl_hours"] == 1.0
+
+    def test_push_card_ttl_roundtrip(self, conn):
+        config_store.set_push_card_ttl(conn, 1.5)
+        exported = config_store.export_config(conn)
+        config_store.import_config(conn, exported)
+        assert config_store.export_config(conn) == exported
+
+    def test_import_without_push_card_ttl_resets_to_default(self, conn):
+        # wholesale replacement: an old backup drops the TTL back to default,
+        # same as it drops push_auth_secret to empty.
+        config_store.set_push_card_ttl(conn, 3.0)
+        config_store.import_config(conn, {"providers": {}})
+        assert config_store.get_push_card_ttl(conn) == 1.0
+
+    def test_import_rejects_bad_ttl_and_writes_nothing(self, conn):
+        config_store.set_push_card_ttl(conn, 1.0)
+        with pytest.raises(config_store.ImportValidationError) as exc:
+            config_store.import_config(conn, {
+                "providers": {}, "push_card_ttl_hours": 0.1,
+            })
+        assert "_push_card_ttl" in exc.value.errors
+        assert config_store.get_push_card_ttl(conn) == 1.0
+
+    def test_parse_import_payload_returns_six_values(self):
+        rows, aliases, prices, ttl, secret, enforce = config_store.parse_import_payload({
+            "providers": {}, "push_card_ttl_hours": 1.5,
         })
-        assert prices == {"a": {"input": 1, "output": 2}}
+        assert ttl == 1.5

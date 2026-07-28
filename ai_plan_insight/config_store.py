@@ -567,17 +567,18 @@ def export_config(conn: sqlite3.Connection) -> dict:
         "model_prices": get_prices(conn),
         "push_auth_secret": secret,
         "enforce_push_auth": enforce,
+        "push_card_ttl_hours": get_push_card_ttl(conn),
     }
 
 
 def parse_import_payload(
     payload: dict,
-) -> tuple[list[InstanceRow], dict[str, list[str]], dict, str, bool]:
+) -> tuple[list[InstanceRow], dict[str, list[str]], dict, float, str, bool]:
     """Validate an export-shaped payload wholesale.
 
     Every problem is collected before raising, so the caller can show all of
     them at once. Raises ImportValidationError; on success returns
-    (rows, aliases, prices, push_auth_secret, enforce_push_auth).
+    (rows, aliases, prices, push_card_ttl, push_auth_secret, enforce_push_auth).
     """
     errors: dict[str, str] = {}
     if not isinstance(payload, dict):
@@ -624,12 +625,18 @@ def parse_import_payload(
     except ValueError as e:
         errors["_model_prices"] = str(e)
 
+    ttl_raw = payload.get("push_card_ttl_hours", PUSH_CARD_TTL_DEFAULT)
+    try:
+        ttl = validate_push_card_ttl(ttl_raw)
+    except ValueError as e:
+        errors["_push_card_ttl"] = str(e)
+
     secret = str(payload.get("push_auth_secret", "") or "")
     enforce = bool(payload.get("enforce_push_auth", False))
 
     if errors:
         raise ImportValidationError(errors)
-    return rows, aliases, prices, secret, enforce
+    return rows, aliases, prices, ttl, secret, enforce
 
 
 def import_config(conn: sqlite3.Connection, payload: dict) -> None:
@@ -637,7 +644,7 @@ def import_config(conn: sqlite3.Connection, payload: dict) -> None:
 
     The admin password and active sessions are untouched.
     """
-    rows, aliases, prices, secret, enforce = parse_import_payload(payload)
+    rows, aliases, prices, ttl, secret, enforce = parse_import_payload(payload)
     now = datetime.now().astimezone().isoformat()
     conn.execute("DELETE FROM provider_instance")
     for row in rows:
@@ -654,6 +661,7 @@ def import_config(conn: sqlite3.Connection, payload: dict) -> None:
         )
     _write_aliases(conn, aliases)
     _write_prices(conn, prices)
+    _set_setting(conn, PUSH_CARD_TTL_KEY, str(ttl))
     _set_setting(conn, "push_auth_secret", secret)
     _set_setting(conn, "enforce_push_auth", "1" if enforce else "0")
     _bump_version(conn)
