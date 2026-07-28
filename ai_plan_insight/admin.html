@@ -43,6 +43,7 @@
   button {
     background: #334155; color: #e2e8f0; border: 1px solid #475569;
     border-radius: 8px; padding: 0.45rem 0.9rem; font: inherit; cursor: pointer;
+    white-space: nowrap;
   }
   button:hover { background: #475569; }
   button.primary { background: #0284c7; border-color: #0ea5e9; }
@@ -51,6 +52,7 @@
   button.danger:hover { background: #991b1b; }
   button.link { background: none; border: none; color: #38bdf8; padding: 0.2rem 0.35rem; }
   .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .row input, .row select { min-width: 0; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid #334155; }
   th { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
@@ -457,10 +459,10 @@ function renderInstances() {
       <td class="num"><input type="number" value="${inst.order}"
           data-order-for="${esc(inst.instance_id)}"></td>
       <td>${inst.enabled ? '启用' : '停用'}</td>
-      <td class="row">
+      <td><div class="row">
         <button class="link" data-edit="${esc(inst.instance_id)}">编辑</button>
         <button class="link" data-delete="${esc(inst.instance_id)}">删除</button>
-      </td>
+      </div></td>
     </tr>`;
   }).join('');
 
