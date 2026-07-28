@@ -27,7 +27,6 @@ from . import provider_v2_store
 logger = logging.getLogger(__name__)
 
 REFRESH_INTERVAL = 30
-PUSH_TTL_SECONDS = 30 * 60
 
 
 class V2RuntimeManager:
@@ -365,7 +364,7 @@ class V2RuntimeManager:
     def get_usage(self) -> list[UsageResponse]:
         """Return combined fetch + valid push results, sorted by (order, title, id)."""
         now = datetime.now().astimezone()
-        cutoff = now - timedelta(seconds=PUSH_TTL_SECONDS)
+        cutoff = now - timedelta(hours=self._config.push_card_ttl_hours)
 
         valid_pushed = [
             r for iid, r in self._pushed_results.items()

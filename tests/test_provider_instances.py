@@ -118,10 +118,13 @@ class TestHandlePush:
         )
         asyncio.run(manager.handle_push("claude-work", payload))
 
-        # Manually expire the push
+        # Default TTL is 1.0 hour; 31 minutes is NOT expired under the new default.
         manager._pushed_at["claude-work"] = datetime.now().astimezone() - timedelta(minutes=31)
-        usage = manager.get_usage()
-        assert len(usage) == 0  # expired, not shown
+        assert len(manager.get_usage()) == 1  # still within 1 hour
+
+        # Past the configured TTL it is hidden.
+        manager._pushed_at["claude-work"] = datetime.now().astimezone() - timedelta(minutes=61)
+        assert len(manager.get_usage()) == 0  # expired
 
 
 class TestGetUsage:
@@ -303,3 +306,45 @@ class TestReload:
         assert mgr._pushed_results == {}
         assert mgr._pushed_at == {}
         assert mgr._fetch_results == {}
+
+
+class TestPushTtlReload:
+    def test_ttl_change_via_reload_takes_effect(self, db_path: Path):
+        """A push card still within the old TTL disappears once the TTL is
+        shrunk via reload()."""
+        config = V2Config.model_validate({
+            "providers": {
+                "claude-personal": {
+                    "type": "claude", "mode": "push", "label": "个人号", "order": 12,
+                },
+            },
+            "push_auth_secret": "test-secret",
+            "enforce_push_auth": True,
+            "push_card_ttl_hours": 1.0,
+        })
+        mgr = V2RuntimeManager(config, db_path)
+        payload = ClaudePushRequest(
+            seven_day={"utilization": 30.0, "resets_at": "2026-07-08T12:00:00Z"},
+            five_hour={"utilization": 10.0, "resets_at": "2026-07-01T15:00:00Z"},
+        )
+        asyncio.run(mgr.handle_push("claude-personal", payload))
+        # 31 minutes ago: within the 1-hour default TTL, still shown.
+        mgr._pushed_at["claude-personal"] = datetime.now().astimezone() - timedelta(minutes=31)
+        assert len(mgr.get_usage()) == 1
+
+        # Reload with a tighter TTL: the same pushed-at is now past the cutoff.
+        tighter = V2Config.model_validate({
+            "providers": {
+                "claude-personal": {
+                    "type": "claude", "mode": "push", "label": "个人号", "order": 12,
+                },
+            },
+            "push_auth_secret": "test-secret",
+            "enforce_push_auth": True,
+            "push_card_ttl_hours": 0.5,
+        })
+        mgr.reload(tighter)
+        # reload() restores snapshots but does not overwrite the in-memory
+        # pushed_at for instances still in config; expire it again after reload.
+        mgr._pushed_at["claude-personal"] = datetime.now().astimezone() - timedelta(minutes=31)
+        assert len(mgr.get_usage()) == 0  # 31 min > 0.5 h cutoff now
