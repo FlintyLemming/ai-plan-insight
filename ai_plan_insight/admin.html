@@ -195,6 +195,21 @@
       </div>
     </section>
 
+    <section class="panel" id="display-settings-panel">
+      <h2>显示设置</h2>
+      <p class="muted" style="margin-bottom:0.75rem;">
+        push 模式的订阅卡片在最后一次推送后超过该时长会从面板隐藏；fetch 模式卡片不受影响（始终展示）。单位为<b>小时</b>，允许小数，最小 <code>0.5</code>（30 分钟）。
+      </p>
+      <div class="field">
+        <label for="push-card-ttl">推送卡片最长显示时长（小时）</label>
+        <input id="push-card-ttl" type="number" min="0.5" step="any">
+      </div>
+      <div class="row">
+        <button class="primary" id="display-settings-save-btn">保存显示设置</button>
+        <span id="display-settings-status" class="muted"></span>
+      </div>
+    </section>
+
     <section class="panel" id="password-panel">
       <h2>管理密码</h2>
       <div class="field">
@@ -387,6 +402,7 @@ async function loadAllSections() {
   await loadAliases();
   await loadPrices();
   await loadPushAuth();
+  await loadDisplaySettings();
 }
 
 async function doLogin() {
@@ -865,6 +881,34 @@ async function savePushAuth() {
   status.textContent = '已保存，请同步更新所有 Agent 的 token';
 }
 
+// ── display settings ─────────────────────────────────────
+
+async function loadDisplaySettings() {
+  const data = await api('/api/admin/display-settings');
+  document.getElementById('push-card-ttl').value = data.push_card_ttl_hours;
+  document.getElementById('display-settings-status').textContent = '';
+}
+
+async function saveDisplaySettings() {
+  const status = document.getElementById('display-settings-status');
+  status.className = 'muted';
+  status.textContent = '保存中…';
+  const value = parseFloat(document.getElementById('push-card-ttl').value);
+  try {
+    await api('/api/admin/display-settings', {
+      method: 'PUT',
+      body: { push_card_ttl_hours: value },
+    });
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = e.message;
+    return;
+  }
+  await loadDisplaySettings();
+  status.className = 'ok';
+  status.textContent = '已保存，新阈值下次刷新面板时生效';
+}
+
 // ── admin password ─────────────────────────────────────────
 
 async function changePassword() {
@@ -943,6 +987,7 @@ document.getElementById('price-save-btn').addEventListener('click', savePrices);
 document.getElementById('push-secret-reveal-btn').addEventListener('click', revealPushSecret);
 document.getElementById('push-secret-generate-btn').addEventListener('click', generatePushSecret);
 document.getElementById('push-auth-save-btn').addEventListener('click', savePushAuth);
+document.getElementById('display-settings-save-btn').addEventListener('click', saveDisplaySettings);
 document.getElementById('pwd-save-btn').addEventListener('click', changePassword);
 document.getElementById('logout-all-btn').addEventListener('click', logoutAll);
 document.getElementById('export-btn').addEventListener('click', doExport);

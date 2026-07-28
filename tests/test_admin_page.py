@@ -159,6 +159,29 @@ class TestPushAuthSection:
         assert 'id="enforce-push-auth"' in h
 
 
+class TestDisplaySettingsSection:
+    def test_panel_present_after_the_push_auth_panel(self):
+        h = read_admin()
+        assert 'id="display-settings-panel"' in h
+        assert "显示设置" in h
+        assert h.index('id="push-auth-panel"') < h.index('id="display-settings-panel"')
+
+    def test_input_is_a_number_with_min_half(self):
+        h = read_admin()
+        assert 'type="number" min="0.5" step="any"' in h
+
+    def test_explains_push_only_and_fetch_unaffected(self):
+        h = read_admin()
+        assert "push 模式" in h
+        assert "fetch" in h
+
+    def test_calls_both_display_settings_endpoints(self):
+        h = read_admin()
+        assert "/api/admin/display-settings" in h
+        assert "function saveDisplaySettings" in h
+        assert "loadDisplaySettings()" in h
+
+
 class TestPasswordSection:
     def test_three_fields_and_logout_all(self):
         h = read_admin()
