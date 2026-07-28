@@ -376,3 +376,68 @@ def test_cross_source_sum_includes_cache_reasoning(tmp_path):
     conn.close()
 
 
+
+
+def test_list_raw_model_usage_sums_all_five_token_kinds(tmp_path):
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [{
+        "date": TODAY, "model_id": "cursor-grok", "input_tokens": 1,
+        "output_tokens": 2, "cache_read_tokens": 4,
+        "cache_write_tokens": 8, "reasoning_tokens": 16,
+    }])
+    assert usage_store.list_raw_model_usage(conn, 90) == [("cursor-grok", 31)]
+    conn.close()
+
+
+def test_list_raw_model_usage_sums_across_sources_and_days(tmp_path):
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "a", "input_tokens": 10, "output_tokens": 0}])
+    usage_store.upsert_points(conn, "m2", None, [
+        {"date": YESTERDAY, "model_id": "a", "input_tokens": 5, "output_tokens": 0}])
+    assert usage_store.list_raw_model_usage(conn, 90) == [("a", 15)]
+    conn.close()
+
+
+def test_list_raw_model_usage_is_ordered_by_total_desc(tmp_path):
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "small", "input_tokens": 1, "output_tokens": 0},
+        {"date": TODAY, "model_id": "big", "input_tokens": 100, "output_tokens": 0},
+    ])
+    assert [m for m, _ in usage_store.list_raw_model_usage(conn, 90)] == ["big", "small"]
+    conn.close()
+
+
+def test_list_raw_model_usage_keeps_raw_ids_unaliased(tmp_path):
+    """Pricing is per raw id, so this query must never merge aliases."""
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "glm-5.2", "input_tokens": 1, "output_tokens": 0},
+        {"date": TODAY, "model_id": "z-ai/glm-5.2", "input_tokens": 1, "output_tokens": 0},
+    ])
+    assert len(usage_store.list_raw_model_usage(conn, 90)) == 2
+    conn.close()
+
+
+def test_list_raw_model_usage_excludes_zero_token_models(tmp_path):
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": TODAY, "model_id": "idle", "input_tokens": 0, "output_tokens": 0}])
+    assert usage_store.list_raw_model_usage(conn, 90) == []
+    conn.close()
+
+
+def test_list_raw_model_usage_respects_the_window(tmp_path):
+    conn = _connect(tmp_path)
+    old = (datetime.now(UTC8).date() - timedelta(days=100)).isoformat()
+    usage_store.upsert_points(conn, "m1", None, [
+        {"date": old, "model_id": "ancient", "input_tokens": 5, "output_tokens": 0}])
+    assert usage_store.list_raw_model_usage(conn, 90) == []
+    conn.close()
+
+
+def test_list_raw_model_usage_empty_db(tmp_path):
+    conn = _connect(tmp_path)
+    assert usage_store.list_raw_model_usage(conn, 90) == []
+    conn.close()

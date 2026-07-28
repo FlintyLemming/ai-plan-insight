@@ -273,6 +273,28 @@ def query_timeseries(
     return rows
 
 
+def list_raw_model_usage(conn: sqlite3.Connection, days: int) -> list[tuple[str, int]]:
+    """(raw model_id, total tokens) for the last `days` days, busiest first.
+
+    Deliberately un-aliased: pricing is per raw model id, so the admin price
+    panel must list raw ids, not canonical display labels. `date` is
+    "YYYY-MM-DD" text, which compares correctly as a string.
+    """
+    start = datetime.now(UTC8).date() - timedelta(days=days - 1)
+    return [
+        (model_id, int(total))
+        for model_id, total in conn.execute(
+            "SELECT model_id, "
+            "SUM(input_tokens + output_tokens + cache_read_tokens "
+            "    + cache_write_tokens + reasoning_tokens) AS total "
+            "FROM usage_point WHERE date >= ? "
+            "GROUP BY model_id HAVING total > 0 "
+            "ORDER BY total DESC, model_id",
+            (start.isoformat(),),
+        )
+    ]
+
+
 def update_source_auth(
     conn: sqlite3.Connection, source_id: str, is_valid: bool, now: str
 ) -> None:
