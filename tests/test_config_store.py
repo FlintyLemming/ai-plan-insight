@@ -423,6 +423,7 @@ class TestExportImport:
                 },
             },
             "model_aliases": {"GLM 5.2": ["glm-5.2"]},
+            "model_prices": {},
             "push_auth_secret": "s3cret",
             "enforce_push_auth": True,
         }
@@ -485,3 +486,39 @@ class TestExportImport:
             },
         })
         assert config_store.get_instance(conn, "claude-x").enabled is False
+
+    def test_export_includes_model_prices(self, conn):
+        config_store.replace_prices(conn, {"cursor-grok": {"input": 2, "output": 6}})
+        assert config_store.export_config(conn)["model_prices"] == {
+            "cursor-grok": {
+                "input": 2.0, "output": 6.0, "cache_read": 0.0, "cache_write": 0.0,
+            },
+        }
+
+    def test_price_roundtrip(self, conn):
+        config_store.replace_prices(conn, {"cursor-grok": {"input": 2, "output": 6}})
+        exported = config_store.export_config(conn)
+        config_store.import_config(conn, exported)
+        assert config_store.export_config(conn) == exported
+
+    def test_import_without_model_prices_clears_them(self, conn):
+        # wholesale replacement: an old backup drops the price table, same as
+        # it drops aliases
+        config_store.replace_prices(conn, {"cursor-grok": {"input": 2, "output": 6}})
+        config_store.import_config(conn, {"providers": {}})
+        assert config_store.get_prices(conn) == {}
+
+    def test_import_rejects_invalid_prices_and_writes_nothing(self, conn):
+        config_store.replace_prices(conn, {"keep-me": {"input": 1, "output": 1}})
+        with pytest.raises(config_store.ImportValidationError) as exc:
+            config_store.import_config(conn, {
+                "providers": {}, "model_prices": {"bad": {"input": -1, "output": 1}},
+            })
+        assert "_model_prices" in exc.value.errors
+        assert list(config_store.get_prices(conn)) == ["keep-me"]
+
+    def test_parse_import_payload_returns_five_values(self):
+        rows, aliases, prices, secret, enforce = config_store.parse_import_payload({
+            "providers": {}, "model_prices": {"a": {"input": 1, "output": 2}},
+        })
+        assert prices == {"a": {"input": 1, "output": 2}}
