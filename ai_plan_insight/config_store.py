@@ -11,6 +11,7 @@ batches several calls into one request transaction.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -47,6 +48,17 @@ CREATE TABLE IF NOT EXISTS model_alias (
 )
 """
 
+_CREATE_MODEL_PRICE = """
+CREATE TABLE IF NOT EXISTS model_price (
+    model_id             TEXT PRIMARY KEY,
+    input_per_mtok       REAL NOT NULL,
+    output_per_mtok      REAL NOT NULL,
+    cache_read_per_mtok  REAL NOT NULL DEFAULT 0,
+    cache_write_per_mtok REAL NOT NULL DEFAULT 0,
+    updated_at           TEXT NOT NULL
+)
+"""
+
 _CREATE_ADMIN_SESSION = """
 CREATE TABLE IF NOT EXISTS admin_session (
     token_hash  TEXT PRIMARY KEY,
@@ -67,6 +79,7 @@ def init_config_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_CREATE_PROVIDER_INSTANCE)
     conn.execute(_CREATE_MODEL_ALIAS)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_model_alias_label ON model_alias(label)")
+    conn.execute(_CREATE_MODEL_PRICE)
     conn.execute(_CREATE_ADMIN_SESSION)
     provider_v2_store.init_v2_schema(conn)
     conn.execute(
@@ -302,6 +315,100 @@ def _write_aliases(conn: sqlite3.Connection, mapping: dict[str, list[str]]) -> N
 def replace_aliases(conn: sqlite3.Connection, mapping: dict[str, list[str]]) -> None:
     validate_aliases(mapping)
     _write_aliases(conn, mapping)
+    _bump_version(conn)
+    conn.commit()
+
+
+# ── model prices ──────────────────────────────────────────────
+
+_PRICE_KEYS = ("input", "output", "cache_read", "cache_write")
+
+
+def validate_prices(mapping: dict) -> None:
+    """Raise ValueError unless the mapping is {model_id: {price key: number}}.
+
+    Prices are USD per MILLION tokens. Unknown keys are rejected rather than
+    ignored, so a typo like "cache-read" fails loudly instead of silently
+    pricing cache reads at 0. An entry with both input and output at 0 is
+    meaningless — clearing a row means dropping it from the mapping.
+    """
+    if not isinstance(mapping, dict):
+        raise ValueError("model_prices must be an object")
+    for model_id, spec in mapping.items():
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise ValueError("price model id must be a non-empty string")
+        if not isinstance(spec, dict):
+            raise ValueError(f"price {model_id!r}: must be an object")
+        unknown = sorted(set(spec) - set(_PRICE_KEYS))
+        if unknown:
+            raise ValueError(f"price {model_id!r}: unknown field(s) {unknown}")
+        values: dict[str, float] = {}
+        for key in _PRICE_KEYS:
+            raw = spec.get(key, 0)
+            # bool is an int subclass; True must not become 1.0
+            if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+                raise ValueError(f"price {model_id!r}: {key} must be a number")
+            value = float(raw)
+            if not math.isfinite(value):
+                raise ValueError(f"price {model_id!r}: {key} must be finite")
+            if value < 0:
+                raise ValueError(f"price {model_id!r}: {key} must not be negative")
+            values[key] = value
+        if not values["input"] and not values["output"]:
+            raise ValueError(
+                f"price {model_id!r}: input and output must not both be 0; "
+                "remove the entry to clear it"
+            )
+
+
+def get_prices(conn: sqlite3.Connection) -> dict[str, dict[str, float]]:
+    """model_id -> USD per MILLION tokens, ordered by model_id."""
+    return {
+        model_id: {
+            "input": inp, "output": outp,
+            "cache_read": cache_read, "cache_write": cache_write,
+        }
+        for model_id, inp, outp, cache_read, cache_write in conn.execute(
+            "SELECT model_id, input_per_mtok, output_per_mtok, "
+            "cache_read_per_mtok, cache_write_per_mtok "
+            "FROM model_price ORDER BY model_id"
+        )
+    }
+
+
+def _write_prices(conn: sqlite3.Connection, mapping: dict) -> None:
+    """Replace the price table inside the caller's transaction.
+
+    Ids are stored lowercased; two spellings differing only in case collapse
+    onto one row (last one wins), matching the exact-match lookup.
+    """
+    now = datetime.now().astimezone().isoformat()
+    conn.execute("DELETE FROM model_price")
+    for model_id, spec in mapping.items():
+        conn.execute(
+            "INSERT INTO model_price (model_id, input_per_mtok, output_per_mtok, "
+            "cache_read_per_mtok, cache_write_per_mtok, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(model_id) DO UPDATE SET "
+            "input_per_mtok=excluded.input_per_mtok, "
+            "output_per_mtok=excluded.output_per_mtok, "
+            "cache_read_per_mtok=excluded.cache_read_per_mtok, "
+            "cache_write_per_mtok=excluded.cache_write_per_mtok, "
+            "updated_at=excluded.updated_at",
+            (
+                model_id.strip().lower(),
+                float(spec.get("input", 0)),
+                float(spec.get("output", 0)),
+                float(spec.get("cache_read", 0)),
+                float(spec.get("cache_write", 0)),
+                now,
+            ),
+        )
+
+
+def replace_prices(conn: sqlite3.Connection, mapping: dict) -> None:
+    validate_prices(mapping)
+    _write_prices(conn, mapping)
     _bump_version(conn)
     conn.commit()
 

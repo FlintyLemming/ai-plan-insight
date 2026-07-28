@@ -212,6 +212,99 @@ class TestAliases:
             config_store.replace_aliases(conn, {"A": [""]})
 
 
+class TestPrices:
+    def test_table_is_created(self, conn):
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+        assert "model_price" in tables
+
+    def test_empty_initially(self, conn):
+        assert config_store.get_prices(conn) == {}
+
+    def test_replace_then_read_back(self, conn):
+        config_store.replace_prices(conn, {
+            "cursor-grok-4.5-high": {"input": 2, "output": 6, "cache_read": 0.5},
+        })
+        assert config_store.get_prices(conn) == {
+            "cursor-grok-4.5-high": {
+                "input": 2.0, "output": 6.0, "cache_read": 0.5, "cache_write": 0.0,
+            },
+        }
+
+    def test_model_id_is_lowercased(self, conn):
+        config_store.replace_prices(conn, {"Cursor-GROK": {"input": 1, "output": 2}})
+        assert list(config_store.get_prices(conn)) == ["cursor-grok"]
+
+    def test_read_back_is_sorted_by_model_id(self, conn):
+        config_store.replace_prices(conn, {
+            "zeta": {"input": 1, "output": 1},
+            "alpha": {"input": 1, "output": 1},
+        })
+        assert list(config_store.get_prices(conn)) == ["alpha", "zeta"]
+
+    def test_replace_is_wholesale(self, conn):
+        config_store.replace_prices(conn, {"a": {"input": 1, "output": 2}})
+        config_store.replace_prices(conn, {"b": {"input": 3, "output": 4}})
+        assert list(config_store.get_prices(conn)) == ["b"]
+
+    def test_replace_bumps_config_version(self, conn):
+        before = config_store.get_config_version(conn)
+        config_store.replace_prices(conn, {"a": {"input": 1, "output": 2}})
+        assert config_store.get_config_version(conn) == before + 1
+
+    def test_non_object_mapping_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.validate_prices([])
+
+    def test_empty_model_id_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"  ": {"input": 1, "output": 2}})
+
+    def test_non_object_value_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"a": 5})
+
+    def test_unknown_key_rejected(self, conn):
+        # guards against typos like "cache-read"
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"a": {"input": 1, "output": 2, "cache-read": 1}})
+
+    def test_negative_value_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"a": {"input": -1, "output": 2}})
+
+    def test_non_numeric_value_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"a": {"input": "2", "output": 2}})
+
+    def test_bool_value_rejected(self, conn):
+        # True would otherwise silently become 1.0
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"a": {"input": True, "output": 2}})
+
+    def test_non_finite_value_rejected(self, conn):
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"a": {"input": float("inf"), "output": 2}})
+
+    def test_input_and_output_both_zero_rejected(self, conn):
+        # clearing a row means dropping it from the mapping, not sending zeros
+        with pytest.raises(ValueError):
+            config_store.validate_prices({"a": {"cache_read": 1}})
+
+    def test_missing_keys_default_to_zero(self, conn):
+        config_store.replace_prices(conn, {"a": {"output": 3}})
+        assert config_store.get_prices(conn)["a"] == {
+            "input": 0.0, "output": 3.0, "cache_read": 0.0, "cache_write": 0.0,
+        }
+
+    def test_invalid_mapping_writes_nothing(self, conn):
+        config_store.replace_prices(conn, {"a": {"input": 1, "output": 2}})
+        with pytest.raises(ValueError):
+            config_store.replace_prices(conn, {"b": {"input": -1, "output": 2}})
+        assert list(config_store.get_prices(conn)) == ["a"]
+
+
 class TestPushAuth:
     def test_defaults(self, conn):
         assert config_store.get_push_auth(conn) == ("", False)
