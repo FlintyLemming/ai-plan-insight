@@ -67,12 +67,26 @@ class V2InstanceConfig(BaseModel):
         return v
 
 
+class ModelPriceConfig(BaseModel):
+    """One manual price override, in USD per MILLION tokens.
+
+    Only used for model ids that none of the upstream pricing sources knows.
+    """
+    model_config = {"extra": "forbid"}
+
+    input: float = 0.0
+    output: float = 0.0
+    cache_read: float = 0.0
+    cache_write: float = 0.0
+
+
 class V2Config(BaseModel):
     """Top-level v2 configuration."""
     model_config = {"extra": "forbid"}
 
     providers: dict[str, V2InstanceConfig]
     model_aliases: dict[str, list[str]] = Field(default_factory=dict)
+    model_prices: dict[str, ModelPriceConfig] = Field(default_factory=dict)
     push_auth_secret: str = ""
     enforce_push_auth: bool = False
 

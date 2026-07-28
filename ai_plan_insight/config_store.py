@@ -450,6 +450,7 @@ def load_config(conn: sqlite3.Connection) -> LoadResult:
     try:
         rows = list_instances(conn, include_disabled=False)
         aliases = get_aliases(conn)
+        prices = get_prices(conn)
         secret, enforce = get_push_auth(conn)
     except sqlite3.Error as e:
         return LoadResult(
@@ -469,7 +470,7 @@ def load_config(conn: sqlite3.Connection) -> LoadResult:
 
     try:
         config = V2Config(
-            providers=providers, model_aliases=aliases,
+            providers=providers, model_aliases=aliases, model_prices=prices,
             push_auth_secret=secret, enforce_push_auth=enforce,
         )
     except Exception as e:

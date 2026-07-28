@@ -339,6 +339,12 @@ class TestIsConfigEmpty:
         config_store.set_push_auth(conn, "", False)
         assert config_store.is_config_empty(conn) is True
 
+    def test_prices_alone_still_count_as_empty(self, conn):
+        # is_config_empty decides whether to run the config.json migration;
+        # prices never came from config.json, so they must not block it.
+        config_store.replace_prices(conn, {"a": {"input": 1, "output": 2}})
+        assert config_store.is_config_empty(conn) is True
+
 
 class TestLoadConfig:
     def test_empty_db_loads_empty_config(self, conn):
@@ -393,6 +399,15 @@ class TestLoadConfig:
             c.close()
         assert result.config_error is not None
         assert result.config.providers == {}
+
+    def test_carries_model_prices(self, conn):
+        config_store.replace_prices(conn, {"cursor-grok": {"input": 2, "output": 6}})
+        cfg = config_store.load_config(conn).config
+        assert cfg.model_prices["cursor-grok"].input == 2.0
+        assert cfg.model_prices["cursor-grok"].output == 6.0
+
+    def test_empty_db_has_no_model_prices(self, conn):
+        assert config_store.load_config(conn).config.model_prices == {}
 
 
 class TestExportImport:

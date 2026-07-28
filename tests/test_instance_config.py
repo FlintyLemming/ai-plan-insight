@@ -250,3 +250,32 @@ class TestV2ConfigAliases:
         from ai_plan_insight.instance_config import DEFAULT_CONFIG_PATH
         assert DEFAULT_CONFIG_PATH.name == "config.json"
         assert DEFAULT_CONFIG_PATH.parent.name != "ai_plan_insight"
+
+
+class TestV2ConfigPrices:
+    def test_model_prices_default_empty(self):
+        cfg = V2Config(providers={})
+        assert cfg.model_prices == {}
+
+    def test_model_prices_parsed_from_dicts(self):
+        cfg = V2Config(providers={}, model_prices={
+            "cursor-grok-4.5-high": {"input": 2, "output": 6},
+        })
+        price = cfg.model_prices["cursor-grok-4.5-high"]
+        assert price.input == 2.0
+        assert price.output == 6.0
+        assert price.cache_read == 0.0
+        assert price.cache_write == 0.0
+
+    def test_unknown_price_field_rejected(self):
+        with pytest.raises(Exception):
+            V2Config(providers={}, model_prices={"a": {"input": 1, "cache-read": 1}})
+
+    def test_config_json_loader_still_rejects_model_prices(self, tmp_path: Path):
+        # config.json is frozen as the v0.12 migration source; prices never
+        # come from it, so the field stays an unknown top-level key there.
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"providers": {}, "model_prices": {}}))
+        result = load_v2_config(str(path))
+        assert result.config_error is not None
+        assert "model_prices" in result.config_error
