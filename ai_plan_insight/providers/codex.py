@@ -38,6 +38,17 @@ class CodexProvider(BaseProvider):
             for m in raw_data.get("model_stats", [])
         ]
 
+    def _today_cost_balance(self, raw_data: dict) -> dict[str, str]:
+        """Calendar-day spend from /v1/usage, if available."""
+        today = (raw_data.get("usage") or {}).get("today") or {}
+        raw_cost = today.get("actual_cost", today.get("cost"))
+        if raw_cost is None:
+            return {}
+        try:
+            return {"今日花费": f"${float(raw_cost):.2f}"}
+        except (TypeError, ValueError):
+            return {}
+
     def _parse_expires_at(self, raw_data: dict) -> datetime | None:
         expires_at = raw_data.get("expires_at")
         if not expires_at:
@@ -62,6 +73,7 @@ class CodexProvider(BaseProvider):
         days_left = raw_data.get("days_until_expiry")
         if days_left is not None:
             balances["剩余天数"] = f"{days_left} 天"
+        balances.update(self._today_cost_balance(raw_data))
 
         return UsageInfo(
             provider=self.name,
@@ -164,6 +176,7 @@ class Sub2ApiProvider(CodexProvider):
         days_left = raw_data.get("days_until_expiry")
         if days_left is not None:
             balances["剩余天数"] = f"{days_left} 天"
+        balances.update(self._today_cost_balance(raw_data))
 
         limits: list[LimitDetail] = []
         for duration, unit, limit_key, usage_key in self._PLAN_WINDOWS:
@@ -221,6 +234,7 @@ class Sub2ApiProvider(CodexProvider):
         days_left = raw_data.get("days_until_expiry")
         if days_left is not None:
             balances["剩余天数"] = f"{days_left} 天"
+        balances.update(self._today_cost_balance(raw_data))
 
         return UsageInfo(
             provider=self.name,
