@@ -2,8 +2,10 @@
 import asyncio
 import json
 import sqlite3
+import httpx
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -11,7 +13,12 @@ from ai_plan_insight.instance_config import V2Config, V2InstanceConfig
 from ai_plan_insight.api_schemas import (
     UsageResponse, LimitResponse, ClaudePushRequest, GrokPushRequest,
 )
-from ai_plan_insight.provider_instances import V2RuntimeManager
+from ai_plan_insight.provider_instances import (
+    V2RuntimeManager,
+    FETCH_JITTER_MAX,
+    RATE_LIMIT_BACKOFF_BASE,
+    RATE_LIMIT_BACKOFF_MAX,
+)
 
 
 @pytest.fixture
@@ -348,3 +355,186 @@ class TestPushTtlReload:
         # pushed_at for instances still in config; expire it again after reload.
         mgr._pushed_at["claude-personal"] = datetime.now().astimezone() - timedelta(minutes=31)
         assert len(mgr.get_usage()) == 0  # 31 min > 0.5 h cutoff now
+
+
+class TestFetchJitterAndBackoff:
+    """Per-instance jitter + 429 backoff in the fetch loop."""
+
+    def _fetch_cfg(self, count: int = 1) -> V2Config:
+        providers = {
+            f"newapi-{i}": {
+                "type": "new_api", "mode": "fetch", "label": f"站点{i}",
+                "api_key": "sk-test", "base_url": "https://example.test",
+                "order": 20 + i,
+            }
+            for i in range(count)
+        }
+        return V2Config.model_validate({"providers": providers})
+
+    def _mgr(self, db_path: Path, count: int = 1) -> V2RuntimeManager:
+        mgr = V2RuntimeManager(self._fetch_cfg(count), db_path)
+        mgr._persist_snapshot = lambda *a, **kw: None
+        return mgr
+
+    @staticmethod
+    def _http_error(status: int, headers: dict | None = None) -> httpx.HTTPStatusError:
+        request = httpx.Request("GET", "https://example.test/api/usage/token/")
+        response = httpx.Response(status, headers=headers or {}, request=request)
+        return httpx.HTTPStatusError("boom", request=request, response=response)
+
+    def test_jitter_within_bounds(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        delays = [mgr._jitter_delay() for _ in range(50)]
+        assert all(0.0 <= d <= FETCH_JITTER_MAX for d in delays)
+        assert len(set(delays)) > 1  # actually random, not a constant
+
+    def test_jitter_applied_before_each_fetch(self, db_path: Path):
+        mgr = self._mgr(db_path, count=2)
+        mgr._jitter_delay = lambda: 0.01
+        slept: list[float] = []
+
+        async def fake_sleep(d):
+            slept.append(d)
+
+        async def fake_fetch(iid, cfg):
+            return UsageResponse(provider=iid)
+
+        mgr._fetch_one_instance = fake_fetch
+        with patch("ai_plan_insight.provider_instances.asyncio.sleep", fake_sleep):
+            asyncio.run(mgr._fetch_all())
+        assert slept == [0.01, 0.01]  # one jitter per instance
+
+    def test_429_sets_backoff_and_skips_next_round(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        mgr._jitter_delay = lambda: 0.0
+        calls = []
+
+        async def fake_fetch(iid, cfg):
+            calls.append(iid)
+            raise self._http_error(429)
+
+        mgr._fetch_one_instance = fake_fetch
+        asyncio.run(mgr._fetch_all())
+        assert calls == ["newapi-0"]
+        assert "newapi-0" in mgr._backoff_until
+
+        # Second round happens well inside the backoff window: no request.
+        asyncio.run(mgr._fetch_all())
+        assert calls == ["newapi-0"]
+
+        # Once the window passes, fetching resumes.
+        mgr._backoff_until["newapi-0"] = datetime.now().astimezone() - timedelta(seconds=1)
+        asyncio.run(mgr._fetch_all())
+        assert calls == ["newapi-0", "newapi-0"]
+
+    def test_backoff_grows_exponentially(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        mgr._jitter_delay = lambda: 0.0
+
+        async def fake_fetch(iid, cfg):
+            raise self._http_error(429)
+
+        mgr._fetch_one_instance = fake_fetch
+        seen = []
+        for _ in range(4):
+            before = datetime.now().astimezone()
+            asyncio.run(mgr._fetch_all())
+            seen.append((mgr._backoff_until["newapi-0"] - before).total_seconds())
+            mgr._backoff_until["newapi-0"] = before - timedelta(seconds=1)
+
+        assert seen[0] == pytest.approx(RATE_LIMIT_BACKOFF_BASE, abs=1)
+        assert seen[1] == pytest.approx(RATE_LIMIT_BACKOFF_BASE * 2, abs=1)
+        assert seen[2] == pytest.approx(RATE_LIMIT_BACKOFF_BASE * 4, abs=1)
+        assert seen[3] == pytest.approx(RATE_LIMIT_BACKOFF_BASE * 8, abs=1)
+
+    def test_backoff_capped(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        mgr._jitter_delay = lambda: 0.0
+        mgr._rate_limit_hits["newapi-0"] = 20  # next hit would be astronomically long
+
+        async def fake_fetch(iid, cfg):
+            raise self._http_error(429)
+
+        mgr._fetch_one_instance = fake_fetch
+        before = datetime.now().astimezone()
+        asyncio.run(mgr._fetch_all())
+        delay = (mgr._backoff_until["newapi-0"] - before).total_seconds()
+        assert delay == pytest.approx(RATE_LIMIT_BACKOFF_MAX, abs=1)
+
+    def test_retry_after_seconds_header_wins(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        mgr._jitter_delay = lambda: 0.0
+
+        async def fake_fetch(iid, cfg):
+            raise self._http_error(429, {"Retry-After": "17"})
+
+        mgr._fetch_one_instance = fake_fetch
+        before = datetime.now().astimezone()
+        asyncio.run(mgr._fetch_all())
+        delay = (mgr._backoff_until["newapi-0"] - before).total_seconds()
+        assert delay == pytest.approx(17, abs=1)
+
+    def test_retry_after_http_date(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        future = datetime.now(timezone.utc) + timedelta(seconds=45)
+        exc = self._http_error(429, {"Retry-After": format_datetime(future, usegmt=True)})
+        assert mgr._retry_after_seconds(exc) == pytest.approx(45, abs=2)
+
+    def test_retry_after_garbage_falls_back_to_exponential(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        exc = self._http_error(429, {"Retry-After": "soon-ish"})
+        assert mgr._retry_after_seconds(exc) is None
+
+    def test_non_429_error_does_not_back_off(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        mgr._jitter_delay = lambda: 0.0
+
+        async def fake_fetch(iid, cfg):
+            raise self._http_error(500)
+
+        mgr._fetch_one_instance = fake_fetch
+        asyncio.run(mgr._fetch_all())
+        assert mgr._backoff_until == {}
+        assert mgr._rate_limit_hits == {}
+
+    def test_success_clears_backoff_state(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        mgr._jitter_delay = lambda: 0.0
+        mgr._rate_limit_hits["newapi-0"] = 3
+        mgr._backoff_until["newapi-0"] = datetime.now().astimezone() - timedelta(seconds=1)
+
+        async def fake_fetch(iid, cfg):
+            return UsageResponse(provider=iid)
+
+        mgr._fetch_one_instance = fake_fetch
+        asyncio.run(mgr._fetch_all())
+        assert mgr._backoff_until == {}
+        assert mgr._rate_limit_hits == {}
+
+    def test_backed_off_instance_keeps_last_card(self, db_path: Path):
+        mgr = self._mgr(db_path)
+        mgr._jitter_delay = lambda: 0.0
+        good = UsageResponse(provider="New API · 站点0")
+        mgr._fetch_results["newapi-0"] = good
+        mgr._prev_results["newapi-0"] = good
+        mgr._backoff_until["newapi-0"] = datetime.now().astimezone() + timedelta(seconds=60)
+
+        async def fake_fetch(iid, cfg):
+            raise AssertionError("must not be called while backing off")
+
+        mgr._fetch_one_instance = fake_fetch
+        asyncio.run(mgr._fetch_all())
+        assert mgr._fetch_results["newapi-0"] is good
+
+    def test_reload_drops_backoff_for_removed_instance(self, db_path: Path, monkeypatch):
+        monkeypatch.setattr(V2RuntimeManager, "restore_snapshots", lambda self: None)
+        monkeypatch.setattr(
+            "ai_plan_insight.provider_instances.asyncio.create_task",
+            lambda coro: coro.close(),
+        )
+        mgr = V2RuntimeManager(self._fetch_cfg(2), db_path)
+        mgr._backoff_until["newapi-1"] = datetime.now().astimezone() + timedelta(seconds=60)
+        mgr._rate_limit_hits["newapi-1"] = 2
+        mgr.reload(self._fetch_cfg(1))
+        assert "newapi-1" not in mgr._backoff_until
+        assert "newapi-1" not in mgr._rate_limit_hits

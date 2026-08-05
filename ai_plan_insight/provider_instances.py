@@ -7,11 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from .instance_config import V2Config, V2InstanceConfig
 from .api_schemas import UsageResponse
@@ -27,6 +31,15 @@ from . import provider_v2_store
 logger = logging.getLogger(__name__)
 
 REFRESH_INTERVAL = 30
+
+# Per-instance random delay before each fetch, so instances sharing one upstream
+# site (and one source IP) don't fire simultaneously every round.
+FETCH_JITTER_MAX = 3.0
+
+# After a 429 the instance is skipped for a while: 60s, 120s, 240s ... capped.
+# A ``Retry-After`` header, when present, wins over the exponential schedule.
+RATE_LIMIT_BACKOFF_BASE = 60.0
+RATE_LIMIT_BACKOFF_MAX = 900.0
 
 
 class V2RuntimeManager:
@@ -50,6 +63,8 @@ class V2RuntimeManager:
         self._pushed_at: dict[str, datetime] = {}
         self._consecutive_failures: dict[str, int] = {}
         self._prev_results: dict[str, UsageResponse] = {}
+        self._backoff_until: dict[str, datetime] = {}
+        self._rate_limit_hits: dict[str, int] = {}
         self._last_updated: str | None = None
         self._refresh_task: asyncio.Task | None = None
 
@@ -67,6 +82,8 @@ class V2RuntimeManager:
         mgr._pushed_at = {}
         mgr._consecutive_failures = {}
         mgr._prev_results = {}
+        mgr._backoff_until = {}
+        mgr._rate_limit_hits = {}
         mgr._last_updated = None
         mgr._refresh_task = None
         return mgr
@@ -184,29 +201,103 @@ class V2RuntimeManager:
             model_stats=model_stats,
         )
 
+    def _jitter_delay(self) -> float:
+        return random.uniform(0.0, FETCH_JITTER_MAX)
+
+    async def _fetch_one_jittered(
+        self, instance_id: str, cfg: V2InstanceConfig,
+    ) -> UsageResponse:
+        """``_fetch_one_instance`` preceded by a short random delay."""
+        delay = self._jitter_delay()
+        if delay > 0:
+            await asyncio.sleep(delay)
+        return await self._fetch_one_instance(instance_id, cfg)
+
+    @staticmethod
+    def _retry_after_seconds(exc: BaseException) -> float | None:
+        """Seconds to wait per a 429's ``Retry-After``; None if absent/unparseable."""
+        if not isinstance(exc, httpx.HTTPStatusError):
+            return None
+        raw = exc.response.headers.get("retry-after")
+        if not raw:
+            return None
+        raw = raw.strip()
+        try:
+            return max(0.0, float(int(raw)))
+        except ValueError:
+            pass
+        try:
+            when = parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
+        if when is None:
+            return None
+        if when.tzinfo is None:
+            when = when.astimezone()
+        return max(0.0, (when - datetime.now().astimezone()).total_seconds())
+
+    def _note_rate_limited(self, instance_id: str, exc: BaseException, now: datetime) -> None:
+        """Record a 429 and schedule the next allowed fetch for this instance."""
+        hits = self._rate_limit_hits.get(instance_id, 0) + 1
+        self._rate_limit_hits[instance_id] = hits
+
+        retry_after = self._retry_after_seconds(exc)
+        if retry_after is None:
+            delay = RATE_LIMIT_BACKOFF_BASE * (2 ** (hits - 1))
+        else:
+            delay = retry_after
+        delay = min(delay, RATE_LIMIT_BACKOFF_MAX)
+
+        self._backoff_until[instance_id] = now + timedelta(seconds=delay)
+        logger.warning(
+            "v2 %s rate limited (429, hit #%d); backing off %.0fs",
+            instance_id, hits, delay,
+        )
+
+    @staticmethod
+    def _is_rate_limited(exc: BaseException) -> bool:
+        return (
+            isinstance(exc, httpx.HTTPStatusError)
+            and exc.response.status_code == 429
+        )
+
     async def _fetch_all(self) -> None:
-        """Fetch all fetch-mode instances concurrently."""
-        fetch_instances = {
-            iid: cfg for iid, cfg in self._config.providers.items()
-            if cfg.mode == "fetch"
-        }
+        """Fetch all fetch-mode instances concurrently, skipping backed-off ones."""
+        now = datetime.now().astimezone()
+        fetch_instances = {}
+        for iid, cfg in self._config.providers.items():
+            if cfg.mode != "fetch":
+                continue
+            until = self._backoff_until.get(iid)
+            if until and until > now:
+                logger.debug(
+                    "v2 %s still backing off for %.0fs, skipping",
+                    iid, (until - now).total_seconds(),
+                )
+                continue
+            fetch_instances[iid] = cfg
         if not fetch_instances:
             return
 
         tasks = {
-            iid: self._fetch_one_instance(iid, cfg)
+            iid: self._fetch_one_jittered(iid, cfg)
             for iid, cfg in fetch_instances.items()
         }
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
+        now = datetime.now().astimezone()
         for (iid, _), result in zip(tasks.items(), results):
             cfg = fetch_instances[iid]
             if isinstance(result, UsageResponse):
                 self._consecutive_failures[iid] = 0
+                self._rate_limit_hits.pop(iid, None)
+                self._backoff_until.pop(iid, None)
                 self._prev_results[iid] = result
                 self._fetch_results[iid] = result
                 self._persist_snapshot(iid, cfg.type, cfg.mode, cfg.label, result)
             else:
+                if self._is_rate_limited(result):
+                    self._note_rate_limited(iid, result, now)
                 self._consecutive_failures[iid] = self._consecutive_failures.get(iid, 0) + 1
                 title = make_card_title(cfg.type, cfg.label)
                 if self._consecutive_failures[iid] < 3 and iid in self._prev_results:
@@ -302,6 +393,8 @@ class V2RuntimeManager:
             self._pushed_at,
             self._prev_results,
             self._consecutive_failures,
+            self._backoff_until,
+            self._rate_limit_hits,
         ):
             for iid in list(state.keys()):
                 if iid not in new_ids:
@@ -330,6 +423,8 @@ class V2RuntimeManager:
         self._pushed_at.clear()
         self._prev_results.clear()
         self._consecutive_failures.clear()
+        self._backoff_until.clear()
+        self._rate_limit_hits.clear()
         self._config = V2Config(providers={})
         self._config_error = config_error
         self._instance_errors = {}
