@@ -153,7 +153,7 @@ class Sub2ApiProvider(CodexProvider):
 
     @property
     def name(self) -> str:
-        return "Sub2API 中转"
+        return "Sub2API"
 
     def parse_usage(self, raw_data: dict) -> UsageInfo:
         if raw_data.get("mode") == "quota_limited" or raw_data.get("quota"):

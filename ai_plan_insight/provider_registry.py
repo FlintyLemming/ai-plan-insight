@@ -31,6 +31,7 @@ from .providers.huawei_cloud import HuaweiCloudBssProvider
 from .providers.zenmux import ZenMuxProvider
 from .providers.codex import CodexProvider, Sub2ApiProvider
 from .providers.antigravity import AntigravityProvider
+from .providers.new_api import NewApiProvider
 from .providers.volcengine_ark import VolcEngineArkProvider
 from .providers.base import BaseProvider
 
@@ -44,6 +45,7 @@ _FETCH_FACTORIES: dict[str, Type[BaseProvider]] = {
     "zenmux": ZenMuxProvider,
     "codex": CodexProvider,
     "sub2api": Sub2ApiProvider,
+    "new_api": NewApiProvider,
     "antigravity": AntigravityProvider,
     "volcengine_ark": VolcEngineArkProvider,
 }

@@ -128,7 +128,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
     ),
     "sub2api": ProviderType(
         name="sub2api",
-        display_name="Sub2API 中转",
+        display_name="Sub2API",
         modes=FETCH,
         summary="拉取 Sub2API 中转站的套餐与余额。",
         fields=(
@@ -136,6 +136,22 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
             CredentialField(
                 name="base_url", label="接口地址",
                 help="中转站的接口根地址，留空则用该类型的默认地址。",
+                placeholder="https://example.com",
+            ),
+        ),
+    ),
+    "new_api": ProviderType(
+        name="new_api",
+        display_name="New API",
+        modes=FETCH,
+        summary="拉取 New API / One API 架构中转站令牌的额度与用量。",
+        doc_url="https://github.com/QuantumNous/new-api",
+        fields=(
+            _api_key(help="中转站签发的 API Key（令牌）。"),
+            CredentialField(
+                name="base_url", label="站点地址",
+                required_in=FETCH,
+                help="New API 站点的访问地址。",
                 placeholder="https://example.com",
             ),
         ),
