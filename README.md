@@ -37,7 +37,7 @@
 | Antigravity | `antigravity` | fetch / push | fetch 模式经 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) 的 API 获取（`api_key` + `base_url`，可选 `admin_password`）；也可用 push 模式由 Agent 推送。原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
 | Cursor | `cursor` | push | 通过 Agent 抓取后推送到面板 | [cursor-usage-agent](https://github.com/FlintyLemming/cursor-usage-agent) |
 | Claude 订阅 | `claude` | push | 通过 Agent 抓取后推送到面板 | [claude-sub-agent](https://github.com/FlintyLemming/claude-sub-agent) |
-| Grok 订阅 | `grok` | push | 通过 Agent 抓取月/周配额后推送到面板 | — |
+| Grok 订阅 | `grok` | push | 通过 Agent 抓取周配额后推送到面板 | — |
 | MiMo Token Plan | `mimo_token_plan` | push | 通过 Agent 抓取后推送到面板 | [mimo-usage-agent](https://github.com/FlintyLemming/mimo-usage-agent) |
 
 此外，「总模型用量」表格的数据独立于订阅余额系统，通过 `POST /api/usage/report` 接收各模型的 Token 消耗明细，可使用 [ai-usage-agent](https://github.com/FlintyLemming/ai-usage-agent) 自动抓取并推送。
@@ -222,24 +222,18 @@ curl -X POST http://localhost:8000/api/push/v2/claude-personal \
 
 ### 推送 Grok 订阅用量（type: grok）
 
-可同时传入月配额与周配额（对齐 Grok CLI / pi-grok-cli）：
+传入周配额（对齐 Grok CLI / pi-grok-cli）：
 
-- `monthly`：绝对 credits（`used` / `limit` / `resets_at`）
-- `weekly`：用量百分比（`utilization` / `resets_at`）
+- `weekly`：用量百分比（`utilization` / `resets_at`），必填
 - `plan`：可选订阅档位展示名（如 `SuperGrok`），空白会被忽略
 
-至少需要 `monthly` 或 `weekly` 之一，两者都缺会返回 422。
+缺 `weekly` 会返回 422。旧 Agent 若仍附带 `monthly` 字段会被忽略。
 
 ```bash
 curl -X POST http://localhost:8000/api/push/v2/grok-main \
   -H "Authorization: Bearer your-secret-token" \
   -H "Content-Type: application/json" \
   -d '{
-    "monthly": {
-      "used": 448,
-      "limit": 15000,
-      "resets_at": "2026-08-01T00:00:00+00:00"
-    },
     "weekly": {
       "utilization": 45.2,
       "resets_at": "2026-07-10T04:01:09Z"

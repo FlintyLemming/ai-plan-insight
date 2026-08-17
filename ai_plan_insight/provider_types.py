@@ -205,7 +205,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         name="grok",
         display_name="Grok 订阅",
         modes=PUSH,
-        summary="由本地 Agent 抓取 Grok 的月/周配额后推送到面板。",
+        summary="由本地 Agent 抓取 Grok 的周配额后推送到面板。",
     ),
     "cursor": ProviderType(
         name="cursor",

@@ -142,13 +142,15 @@ class TestConvertPushPayload:
     def test_grok(self):
         payload = GrokPushRequest(
             weekly={"utilization": 50.0, "resets_at": "2026-07-08T00:00:00Z"},
-            monthly={"used": 100.0, "limit": 200.0, "resets_at": "2026-08-01T00:00:00Z"},
             plan="SuperGrok",
         )
         resp = convert_push_payload("grok", "grok-work", "Grok 订阅 · 工作号", payload)
         assert resp.provider == "Grok 订阅 · 工作号"
         assert resp.membership_level == "SuperGrok"
-        assert len(resp.limits) == 2
+        assert len(resp.limits) == 1
+        assert resp.limits[0].time_unit == "天"
+        assert resp.limits[0].used == "50"
+        assert resp.limits[0].remaining == "50"
 
     def test_cursor(self):
         payload = CursorPushRequest(

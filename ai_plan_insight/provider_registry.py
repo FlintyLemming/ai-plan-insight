@@ -94,27 +94,17 @@ def _convert_claude(instance_id: str, title: str, payload: ClaudePushRequest) ->
 
 def _convert_grok(instance_id: str, title: str, payload: GrokPushRequest) -> UsageResponse:
     plan = (payload.plan or "").strip() or None
-    limits: list[LimitResponse] = []
-    if payload.monthly is not None:
-        used = int(payload.monthly.used)
-        limit_val = int(payload.monthly.limit)
-        remaining = max(limit_val - used, 0)
-        limits.append(LimitResponse(
-            duration=1, time_unit="月",
-            limit=str(limit_val), used=str(used), remaining=str(remaining),
-            reset_time=payload.monthly.resets_at,
-        ))
-    if payload.weekly is not None:
-        limits.append(LimitResponse(
-            duration=7, time_unit="天", limit="100",
-            used=str(int(payload.weekly.utilization)),
-            remaining=str(int(100 - payload.weekly.utilization)),
-            reset_time=payload.weekly.resets_at,
-        ))
     return UsageResponse(
         provider=title,
         membership_level=plan,
-        limits=limits,
+        limits=[
+            LimitResponse(
+                duration=7, time_unit="天", limit="100",
+                used=str(int(payload.weekly.utilization)),
+                remaining=str(int(100 - payload.weekly.utilization)),
+                reset_time=payload.weekly.resets_at,
+            ),
+        ],
     )
 
 
