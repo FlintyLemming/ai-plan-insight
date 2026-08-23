@@ -358,11 +358,6 @@
        or focusing a model outside the top 8 lights up an "其他" band nobody
        can pick out from the bar around it. */
     #usage-svg.has-active rect[data-model]:not(.is-active) { fill: #28344a; }
-    /* A thin outline on top of the fill contrast. Dimming alone is not enough
-       for a model with a small share — its band is a few pixels tall, and
-       "其他" is a low-chroma gray besides — so the outline is what makes the
-       focused segments findable at a glance. */
-    #usage-svg.has-active rect[data-model].is-active { stroke: #e2e8f0; stroke-width: 1; }
     .usage-legend.has-active .usage-legend-item:not(.is-active) { opacity: 0.3; }
     .usage-legend-item { cursor: default; transition: opacity 0.12s ease; }
   }

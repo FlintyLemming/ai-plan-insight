@@ -207,7 +207,6 @@ def test_model_focus_dim_styles_are_pointer_only():
     block = block[:block.index("\n  }\n")]
     assert "#usage-svg.has-active rect[data-model]:not(.is-active)" in block
     assert ".usage-legend.has-active .usage-legend-item:not(.is-active)" in block
-    assert "#usage-svg.has-active rect[data-model].is-active" in block
 
 
 def test_model_focus_is_delegated_on_stable_containers():
