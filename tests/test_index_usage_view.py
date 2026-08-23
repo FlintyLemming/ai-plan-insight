@@ -179,3 +179,42 @@ def test_usage_refresh_clears_global_loading_indicators():
     assert "getElementById('loading')" in fn
     assert "getElementById('updated')" in fn
     assert "last_updated" in fn
+
+
+def test_model_focus_tags_bars_legend_and_table():
+    # Hovering a legend item or a table row focuses one model across the
+    # chart, so all three need a data-model hook to match on.
+    h = read_index()
+    assert 'barsSvg += `<rect data-model="${escapeHtml(m.label)}"' in h
+    assert '<div class="usage-legend-item" data-model="${escapeHtml(m.label)}">' in h
+    assert '<tr data-model="${escapeHtml(chartGroupFor(m.label))}">' in h
+
+
+def test_model_focus_maps_untracked_models_to_other():
+    # The table lists every model, the chart only the top 8 plus "其他", so a
+    # row outside the top 8 has to focus the "其他" segment.
+    h = read_index()
+    assert "const USAGE_OTHER_LABEL = '其他';" in h
+    fn = h[h.index("function chartGroupFor"):h.index("function setActiveUsageModel")]
+    assert "lastUsageModels.some(m => m.label === label)" in fn
+    assert "USAGE_OTHER_LABEL" in fn
+
+
+def test_model_focus_dim_styles_are_pointer_only():
+    # There is no hover on touch, so the dim rules must not stick there.
+    h = read_index()
+    block = h[h.index("@media (hover: hover) {"):]
+    block = block[:block.index("\n  }\n")]
+    assert "#usage-svg.has-active rect[data-model]:not(.is-active)" in block
+    assert ".usage-legend.has-active .usage-legend-item:not(.is-active)" in block
+    assert "#usage-svg.has-active rect[data-model].is-active" in block
+
+
+def test_model_focus_is_delegated_on_stable_containers():
+    # Both containers outlive every re-render, so paging the table or
+    # resizing the chart must not need a re-bind.
+    h = read_index()
+    assert "['usage-chart-container', 'usage-table-container'].forEach(id => {" in h
+    fn = h[h.index("function setActiveUsageModel"):h.index("// Delegated once")]
+    assert "classList.toggle('has-active'" in fn
+    assert "classList.toggle('is-active'" in fn

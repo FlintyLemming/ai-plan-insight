@@ -350,6 +350,22 @@
     font-variant-numeric: tabular-nums;
   }
   .usage-hover { cursor: pointer; }
+  /* Focus mode: hovering a legend item or a table row dims every model but
+     one, across the bars and the legend at once. Pointer devices only —
+     there is no hover on touch, so the rules must not stick there. */
+  @media (hover: hover) {
+    /* Dim fill has to stay clearly darker than USAGE_OTHER_COLOR (#64748b),
+       or focusing a model outside the top 8 lights up an "其他" band nobody
+       can pick out from the bar around it. */
+    #usage-svg.has-active rect[data-model]:not(.is-active) { fill: #28344a; }
+    /* A thin outline on top of the fill contrast. Dimming alone is not enough
+       for a model with a small share — its band is a few pixels tall, and
+       "其他" is a low-chroma gray besides — so the outline is what makes the
+       focused segments findable at a glance. */
+    #usage-svg.has-active rect[data-model].is-active { stroke: #e2e8f0; stroke-width: 1; }
+    .usage-legend.has-active .usage-legend-item:not(.is-active) { opacity: 0.3; }
+    .usage-legend-item { cursor: default; transition: opacity 0.12s ease; }
+  }
   .stale-alert {
     display: flex;
     align-items: center;
@@ -715,6 +731,7 @@ applyUsageRange(usageRange);
 
 const USAGE_COLORS = ['#38bdf8', '#f59e0b', '#34d399', '#f472b6', '#a78bfa', '#fbbf24', '#22d3ee', '#fb7185'];
 const USAGE_OTHER_COLOR = '#64748b';
+const USAGE_OTHER_LABEL = '其他';  // must match USAGE_OTHER_LABEL in web.py
 let lastUsageModels = [];  // [{label,color,...}] from the most recent fetch
 let lastUsageData = null;  // raw payload from the most recent fetch, for re-render on resize
 
@@ -723,6 +740,42 @@ function escapeHtml(s) {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 }
+
+// --- Model focus: hovering a legend item or a table row highlights that
+// model in the bars and dims the rest. The table lists every model while the
+// chart only draws the top 8 plus "其他", so a row outside the top 8 focuses
+// the "其他" segment — that is where its tokens actually are.
+let activeUsageModel = null;
+
+function chartGroupFor(label) {
+  return lastUsageModels.some(m => m.label === label) ? label : USAGE_OTHER_LABEL;
+}
+
+function setActiveUsageModel(label) {
+  if (activeUsageModel === label) return;
+  activeUsageModel = label;
+  const svgEl = document.getElementById('usage-svg');
+  const legendEl = document.querySelector('.usage-legend');
+  [svgEl, legendEl].forEach(root => {
+    if (!root) return;
+    root.classList.toggle('has-active', label !== null);
+    root.querySelectorAll('[data-model]').forEach(el => {
+      el.classList.toggle('is-active', el.getAttribute('data-model') === label);
+    });
+  });
+}
+
+// Delegated once on the two containers, which outlive every re-render, so
+// paging the table or resizing the chart never needs a re-bind.
+['usage-chart-container', 'usage-table-container'].forEach(id => {
+  const host = document.getElementById(id);
+  if (!host) return;
+  host.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('.usage-legend-item, .usage-table tbody tr');
+    setActiveUsageModel(target ? target.getAttribute('data-model') : null);
+  });
+  host.addEventListener('mouseleave', () => setActiveUsageModel(null));
+});
 
 function formatUsageDate(label) {
   const parts = String(label || '').split('-');
@@ -809,7 +862,7 @@ function renderUsageChart(data) {
       const h = (m.total / maxTotal) * plotH;
       const y = cursor - h;
       const segmentColor = m.color || colorByLabel[m.label] || USAGE_OTHER_COLOR;
-      barsSvg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${segmentColor}"/>`;
+      barsSvg += `<rect data-model="${escapeHtml(m.label)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${segmentColor}"/>`;
       cursor = y;
     });
     barsSvg += `<rect class="usage-hover" data-idx="${idx}" x="${(padL + slot * idx).toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent"/>`;
@@ -821,7 +874,7 @@ function renderUsageChart(data) {
   // Legend below the chart, kept outside the SVG so it never covers bars.
   let legendHtml = '';
   modelSummary.forEach((m, i) => {
-    legendHtml += `<div class="usage-legend-item">
+    legendHtml += `<div class="usage-legend-item" data-model="${escapeHtml(m.label)}">
       <span class="usage-legend-swatch" style="background:${m.color}"></span>
       <span class="usage-legend-label">${escapeHtml(m.label)}</span>
       <span class="usage-legend-share">${Number(m.share_pct || 0).toFixed(1)}%</span>
@@ -836,6 +889,8 @@ function renderUsageChart(data) {
 </svg>
 <div class="usage-legend">${legendHtml}</div>
 <div class="usage-tooltip" id="usage-tooltip"></div>`;
+  // The legend and bars just got replaced, so any focus state is gone with them.
+  activeUsageModel = null;
 
   // Tooltip wiring: show per-model rows for a given day index.
   const svgEl = document.getElementById('usage-svg');
@@ -958,7 +1013,7 @@ function renderUsageTable() {
 
   const rowsHtml = pageRows.map(m => {
     const color = m.color || USAGE_OTHER_COLOR;
-    return `<tr>
+    return `<tr data-model="${escapeHtml(chartGroupFor(m.label))}">
       <td class="col-model"><span class="usage-table-model-cell">
         <span class="usage-table-swatch" style="background:${color}"></span>
         <span class="usage-table-label">${escapeHtml(m.label)}</span>
