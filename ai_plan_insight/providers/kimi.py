@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from datetime import datetime
 from ..models import UsageInfo, LimitDetail
@@ -8,6 +9,13 @@ class KimiProvider(BaseProvider):
     """Kimi Coding Plan usage provider."""
 
     API_URL = "https://api.kimi.com/coding/v1/usages"
+    USER_URL = "https://api.kimi.com/coding/v1/me"
+
+    MEMBERSHIP_LEVEL_MAP = {
+        "LEVEL_BASIC": "Andante",
+        "LEVEL_INTERMEDIATE": "Allegretto",
+        "LEVEL_ADVANCED": "Allegro",
+    }
 
     @property
     def name(self) -> str:
@@ -20,13 +28,34 @@ class KimiProvider(BaseProvider):
         }
 
     async def fetch_usage(self) -> dict:
-        self.log.info("Request: GET %s", self.API_URL)
+        self.log.info("Request: GET %s and GET %s", self.API_URL, self.USER_URL)
         async with httpx.AsyncClient() as client:
-            response = await client.get(self.API_URL, headers=self._headers)
-            self.log.info("Response: %d %s", response.status_code, response.reason_phrase)
-            self.log.debug("Response body: %s", response.text)
-            response.raise_for_status()
-            return response.json()
+            usages_task = client.get(self.API_URL, headers=self._headers)
+            user_task = client.get(self.USER_URL, headers=self._headers)
+            usages_res, user_res = await asyncio.gather(usages_task, user_task, return_exceptions=True)
+
+            if isinstance(usages_res, Exception):
+                raise usages_res
+
+            self.log.info("Response usages: %d %s", usages_res.status_code, usages_res.reason_phrase)
+            self.log.debug("Response usages body: %s", usages_res.text)
+            usages_res.raise_for_status()
+            usages_data = usages_res.json()
+
+            user_data = None
+            if not isinstance(user_res, Exception) and user_res.status_code == 200:
+                self.log.info("Response me: %d %s", user_res.status_code, user_res.reason_phrase)
+                self.log.debug("Response me body: %s", user_res.text)
+                user_data = user_res.json()
+            elif isinstance(user_res, Exception):
+                self.log.warning("Failed to fetch Kimi user info: %s", user_res)
+            else:
+                self.log.warning("Kimi /me returned %d: %s", user_res.status_code, user_res.text)
+
+            return {
+                "usages": usages_data,
+                "user_info": user_data,
+            }
 
     def _parse_reset_time(self, reset_time_str: str | None) -> datetime | None:
         if not reset_time_str:
@@ -77,13 +106,36 @@ class KimiProvider(BaseProvider):
         return limits
 
     def parse_usage(self, raw_data: dict) -> UsageInfo:
-        user = raw_data.get("user", {})
-        limits = self._parse_limits(raw_data)
+        # Support both wrapped format {"usages": ..., "user_info": ...} and direct /usages response
+        usages_data = (
+            raw_data.get("usages")
+            if "usages" in raw_data and isinstance(raw_data.get("usages"), dict)
+            else raw_data
+        )
+        user_info = (
+            raw_data.get("user_info")
+            if isinstance(raw_data.get("user_info"), dict)
+            else {}
+        )
+
+        user = usages_data.get("user", {})
+        limits = self._parse_limits(usages_data)
+
+        # 1. First priority: user_level_name from /coding/v1/me (e.g. "Allegretto")
+        membership_level = user_info.get("user_level_name")
+
+        # 2. Fallback: map internal level enum from /usages (e.g. "LEVEL_INTERMEDIATE" -> "Allegretto")
+        if not membership_level:
+            raw_level = user.get("membership", {}).get("level")
+            if raw_level:
+                membership_level = self.MEMBERSHIP_LEVEL_MAP.get(raw_level, raw_level)
+
+        user_id = user_info.get("user_id") or user.get("userId", "")
 
         return UsageInfo(
             provider=self.name,
-            user_id=user.get("userId", ""),
-            membership_level="Andante",
+            user_id=user_id,
+            membership_level=membership_level,
             limits=limits,
             raw_response=raw_data,
         )
