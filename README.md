@@ -47,7 +47,7 @@
 ### 拉取镜像
 
 ```bash
-docker pull git.mitsea.com/flintylemming/ai-plan-insight:latest
+docker pull ghcr.io/flintylemming/ai-plan-insight:latest
 ```
 
 ### 运行容器
@@ -62,7 +62,7 @@ docker run -d \
   -p 8000:8000 \
   -v ~/ai-plan-insight:/data \
   -e ADMIN_PASSWORD=换成你自己的密码 \
-  git.mitsea.com/flintylemming/ai-plan-insight:latest \
+  ghcr.io/flintylemming/ai-plan-insight:latest \
   python -m ai_plan_insight --web --host 0.0.0.0 --port 8000 --config /data/config.json
 ```
 
