@@ -66,20 +66,29 @@ def _to_provider_config(inst: V2InstanceConfig) -> ProviderConfig:
 
 
 def _convert_claude(instance_id: str, title: str, payload: ClaudePushRequest) -> UsageResponse:
-    limits = [
-        LimitResponse(
-            duration=5, time_unit="小时", limit="100",
-            used=str(int(payload.five_hour.utilization)),
-            remaining=str(int(100 - payload.five_hour.utilization)),
-            reset_time=payload.five_hour.resets_at,
-        ),
-        LimitResponse(
-            duration=7, time_unit="天", limit="100",
-            used=str(int(payload.seven_day.utilization)),
-            remaining=str(int(100 - payload.seven_day.utilization)),
-            reset_time=payload.seven_day.resets_at,
-        ),
-    ]
+    err = (payload.error or "").strip()
+    if err:
+        return UsageResponse(provider=title, error=err)
+
+    limits: list[LimitResponse] = []
+    if payload.five_hour is not None:
+        limits.append(
+            LimitResponse(
+                duration=5, time_unit="小时", limit="100",
+                used=str(int(payload.five_hour.utilization)),
+                remaining=str(int(100 - payload.five_hour.utilization)),
+                reset_time=payload.five_hour.resets_at,
+            )
+        )
+    if payload.seven_day is not None:
+        limits.append(
+            LimitResponse(
+                duration=7, time_unit="天", limit="100",
+                used=str(int(payload.seven_day.utilization)),
+                remaining=str(int(100 - payload.seven_day.utilization)),
+                reset_time=payload.seven_day.resets_at,
+            )
+        )
     if payload.fable is not None:
         limits.append(
             LimitResponse(

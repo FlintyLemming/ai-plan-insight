@@ -202,7 +202,7 @@ Content-Type: application/json
 
 ### 推送 Claude 订阅用量（type: claude）
 
-分别传入 `seven_day` 与 `five_hour` 的用量百分比 (`utilization`) 和重置时间 (`resets_at`，ISO8601 字符串)。
+分别传入 `seven_day` 与 `five_hour` 的用量百分比 (`utilization`) 和重置时间 (`resets_at`，ISO8601 字符串，窗口未激活时可为 `null`)；若本地抓取遇到 401 鉴权失效，也可推送 `{"error": "需要重新登录"}`，面板卡片会高亮提示重新登录，直到重新推送正常用量数据。
 
 ```bash
 curl -X POST http://localhost:8000/api/push/v2/claude-personal \

@@ -67,3 +67,68 @@ def test_push_claude_appears_in_usage_v2(tmp_path, monkeypatch):
         assert data[0]["type"] == "claude"
     web._v2_manager = None
     web._config_service = None
+
+
+def test_push_claude_auth_error_and_recovery(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post(
+            "/api/push/v2/claude-main",
+            json={"error": "需要重新登录"},
+            headers={"Authorization": "Bearer abc"},
+        )
+        assert resp.status_code == 200
+        data = c.get("/api/usage/v2").json()
+        assert len(data) == 1
+        assert data[0]["instance_id"] == "claude-main"
+        assert data[0]["error"] == "需要重新登录"
+        assert data[0]["limits"] == []
+
+        # Pushing normal usage afterwards clears the error state
+        resp = c.post(
+            "/api/push/v2/claude-main",
+            json=VALID_PAYLOAD,
+            headers={"Authorization": "Bearer abc"},
+        )
+        assert resp.status_code == 200
+        data = c.get("/api/usage/v2").json()
+        assert data[0]["error"] is None
+        assert len(data[0]["limits"]) == 2
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_push_claude_rejects_empty_error_without_windows(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post(
+            "/api/push/v2/claude-main",
+            json={"error": "   "},
+            headers={"Authorization": "Bearer abc"},
+        )
+        assert resp.status_code == 422
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_push_claude_allows_null_resets_at_and_partial_windows(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post(
+            "/api/push/v2/claude-main",
+            json={
+                "five_hour": {"utilization": 0.0, "resets_at": None},
+                "seven_day": {"utilization": 10.0, "resets_at": "2026-07-08T12:00:00Z"},
+            },
+            headers={"Authorization": "Bearer abc"},
+        )
+        assert resp.status_code == 200
+        data = c.get("/api/usage/v2").json()
+        assert len(data[0]["limits"]) == 2
+        assert data[0]["limits"][0]["reset_time"] is None
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_index_html_renders_error_card_with_header_and_escaped_message():
+    html = (Path(__file__).resolve().parents[1] / "ai_plan_insight" / "index.html").read_text(encoding="utf-8")
+    assert "card card-error" in html
+    assert "card-error-msg" in html
+    assert "escapeHtml(data.error)" in html

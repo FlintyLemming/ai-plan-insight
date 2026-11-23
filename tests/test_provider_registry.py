@@ -139,6 +139,13 @@ class TestConvertPushPayload:
         assert fable.remaining == "56"
         assert fable.reset_time == "2026-07-26T07:00:00Z"
 
+    def test_claude_with_error(self):
+        payload = ClaudePushRequest(error="需要重新登录")
+        resp = convert_push_payload("claude", "claude-work", "Claude 订阅 · 工作号", payload)
+        assert resp.provider == "Claude 订阅 · 工作号"
+        assert resp.error == "需要重新登录"
+        assert resp.limits == []
+
     def test_grok(self):
         payload = GrokPushRequest(
             weekly={"utilization": 50.0, "resets_at": "2026-07-08T00:00:00Z"},

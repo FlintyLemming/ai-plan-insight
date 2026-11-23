@@ -238,6 +238,18 @@
     border: 1px solid #7f1d1d;
     color: #fca5a5;
   }
+  .card-error {
+    border-color: #7f1d1d;
+  }
+  .card-error-msg {
+    background: rgba(127, 29, 29, 0.25);
+    border: 1px solid #7f1d1d;
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    font-size: 0.9rem;
+    color: #fca5a5;
+    line-height: 1.5;
+  }
   #loading { color: #64748b; }
   .tab-bar {
     display: flex;
@@ -1525,11 +1537,9 @@ function formatUsd(v) {
 function renderCard(data) {
   if (data.error) {
     return `
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">${data.provider}</span>
-        </div>
-        <div class="limit-meta">${data.error}</div>
+      <div class="card card-error">
+        ${renderHeader(data, '')}
+        <div class="card-error-msg">${escapeHtml(data.error)}</div>
       </div>`;
   }
 

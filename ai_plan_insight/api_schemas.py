@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 class UsageDetailResponse(BaseModel):
@@ -87,15 +87,25 @@ class MimoPushRequest(BaseModel):
 
 class ClaudeWindowPush(BaseModel):
     utilization: float
-    resets_at: str
+    resets_at: str | None = None
 
 
 class ClaudePushRequest(BaseModel):
-    seven_day: ClaudeWindowPush
-    five_hour: ClaudeWindowPush
+    seven_day: ClaudeWindowPush | None = None
+    five_hour: ClaudeWindowPush | None = None
     # Model-scoped weekly window (e.g. Fable). Optional so pushers that predate
     # it still validate and produce the original two-window card.
     fable: ClaudeWindowPush | None = None
+    # Error status reported by the local monitor (e.g. "需要重新登录" on 401).
+    error: str | None = None
+
+    @model_validator(mode="after")
+    def _require_error_or_windows(self) -> "ClaudePushRequest":
+        if self.error and self.error.strip():
+            return self
+        if self.five_hour is None and self.seven_day is None:
+            raise ValueError("either error or usage windows (five_hour / seven_day) must be provided")
+        return self
 
 
 class GrokWindowPush(BaseModel):
@@ -130,9 +140,6 @@ class QianwenPushRequest(BaseModel):
     expires_at: str | None = None      # 北京时间字符串
     five_hour: QianwenWindowPush | None = None
     seven_day: QianwenWindowPush | None = None
-
-
-from pydantic import Field
 
 
 class UsagePoint(BaseModel):
