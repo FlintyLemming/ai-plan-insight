@@ -974,6 +974,9 @@
   @media (min-width: 640px) {
     .usage-table-head { padding: 20px 24px; }
   }
+  /* When all columns don't fit the card (narrow desktop), scroll the table
+     sideways inside the card instead of clipping the right-hand columns. */
+  .usage-table-scroll { overflow-x: auto; }
   .usage-table {
     width: 100%;
     border-collapse: collapse;
@@ -1004,8 +1007,15 @@
     text-align: left;
     background: var(--canvas-soft);
   }
+  /* The model column soaks up whatever width the numeric columns leave over
+     (width:100%), and max-width:0 stops its content from widening the table,
+     so a long name is cut only when the row genuinely runs out of room.
+     min-width keeps a readable floor when every numeric column is showing. */
   .usage-table td.col-model {
     text-align: left;
+    width: 100%;
+    max-width: 0;
+    min-width: 12rem;
   }
   .usage-table td.num {
     font-family: var(--font-mono);
@@ -1017,10 +1027,10 @@
   .usage-table tbody tr:hover { background: var(--canvas-soft); }
   .usage-table td.num, .usage-table th.num { font-variant-numeric: tabular-nums; }
   .usage-table-model-cell {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 8px;
-    max-width: 16rem;
+    min-width: 0;
   }
   .usage-table-swatch {
     width: 10px;
@@ -1029,6 +1039,7 @@
     flex: 0 0 auto;
   }
   .usage-table-label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1683,7 +1694,7 @@ function renderUsageTable() {
     return `<tr data-model="${escapeHtml(chartGroupFor(m.label))}">
       <td class="col-model"><span class="usage-table-model-cell">
         <span class="usage-table-swatch" style="background:${seriesColor(color)}"></span>
-        <span class="usage-table-label">${escapeHtml(m.label)}</span>
+        <span class="usage-table-label" title="${escapeHtml(m.label)}">${escapeHtml(m.label)}</span>
       </span></td>
       <td class="num col-detail">${formatTokens(m.input_tokens || 0)}</td>
       <td class="num col-detail">${formatTokens(m.output_tokens || 0)}</td>
@@ -1717,7 +1728,7 @@ function renderUsageTable() {
     <div class="panel-title">模型明细</div>
     <div class="panel-note">按总用量排序 · 悬停一行可在图中定位</div>
   </div>
-  <table class="usage-table">
+  <div class="usage-table-scroll"><table class="usage-table">
     <thead>
       <tr>
         <th class="col-model">模型名</th>
@@ -1731,7 +1742,7 @@ function renderUsageTable() {
       </tr>
     </thead>
     <tbody>${rowsHtml}</tbody>
-  </table>
+  </table></div>
 </div>
 <div class="usage-pagination">
   <span class="usage-pagination-info">第 ${startIdx + 1}-${endIdx} 条，共 ${total} 个模型</span>
