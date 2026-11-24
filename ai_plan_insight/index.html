@@ -10,6 +10,64 @@
 <!-- Loaded non-blocking: if Google Fonts is unreachable the page renders at
      once with the system fallbacks below instead of waiting on a timeout. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+<script>
+  // Theme: a stored choice (light / dark) wins, otherwise follow the OS.
+  // Runs before first paint so the page never flashes the wrong theme. The
+  // dashboard and the admin page share this script and the storage key.
+  (function () {
+    var KEY = 'ai-plan-insight:theme';
+    var LABELS = { system: '跟随系统', light: '浅色', dark: '深色' };
+    var root = document.documentElement;
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    function read() {
+      try {
+        var v = localStorage.getItem(KEY);
+        return v === 'light' || v === 'dark' ? v : 'system';
+      } catch (e) { return 'system'; }
+    }
+    var pref = read();
+    function apply() {
+      var theme = pref === 'system' ? (mq.matches ? 'dark' : 'light') : pref;
+      root.setAttribute('data-theme', theme);
+      root.setAttribute('data-theme-pref', pref);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', theme === 'dark' ? '#131210' : '#f7f7f4');
+      var btn = document.getElementById('theme-toggle');
+      if (btn) {
+        var text = '主题：' + LABELS[pref] + (pref === 'system' ? '（' + LABELS[theme] + '）' : '');
+        btn.title = text;
+        btn.setAttribute('aria-label', text + '，点击切换');
+      }
+    }
+    // From 跟随系统 the first click always flips what is on screen; the cycle
+    // then visits the other explicit theme and returns to 跟随系统.
+    function next() {
+      var os = mq.matches ? 'dark' : 'light';
+      var other = os === 'dark' ? 'light' : 'dark';
+      return pref === 'system' ? other : (pref === other ? os : 'system');
+    }
+    apply();
+    if (mq.addEventListener) mq.addEventListener('change', apply);
+    else if (mq.addListener) mq.addListener(apply);
+    // Keep other open tabs (dashboard ↔ admin) in step.
+    window.addEventListener('storage', function (e) {
+      if (e.key === KEY) { pref = read(); apply(); }
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      apply();
+      btn.addEventListener('click', function () {
+        pref = next();
+        try {
+          if (pref === 'system') localStorage.removeItem(KEY);
+          else localStorage.setItem(KEY, pref);
+        } catch (e) { /* storage blocked: the choice lasts for this page only */ }
+        apply();
+      });
+    });
+  })();
+</script>
 <style>
   /* Design tokens — warm cream editorial system. Cursor Orange (--primary)
      stays scarce: the wordmark mark only. Depth is hairlines, never shadows. */
@@ -35,6 +93,25 @@
     --error: #cf2d56;
     --error-soft: #fcf0f3;
     --error-line: #f1cfd8;
+    --ink-hover: #3a3930;
+    --pill-track: var(--hairline-soft);
+    --pill-active: var(--surface-card);
+    /* Chart series: the light column of the validated categorical palette
+       (USAGE_PALETTE in web.py). The server sends these hex values; the page
+       paints them through the tokens so the dark theme can re-step them. */
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --series-5: #e87ba4;
+    --series-6: #008300;
+    --series-7: #6250d6;
+    --series-8: #e34948;
+    --series-other: #a09c92;
+    /* Focus-mode fill for the models not in focus; must stay clearly apart
+       from --series-other or a focused "其他" band disappears. */
+    --chart-dim: #ecebe5;
+    color-scheme: light;
     --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
     --rounded-xs: 4px;
@@ -47,6 +124,45 @@
        snap it to whole 364px balance-card columns further down, so every
        block on the page shares the card grid's left AND right edge. */
     --shell-max: 100%;
+  }
+  /* Dark theme — warm charcoal rather than slate, so it reads as the same
+     cream system at night: hairlines and ink only, cards a step lighter than
+     the canvas. Set by the theme script in <head> (OS default or the toggle). */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #131210;
+    --canvas-soft: #181714;
+    --surface-card: #1c1b18;
+    --surface-strong: #2c2b26;
+    --hairline: #2c2b26;
+    --hairline-soft: #242320;
+    --hairline-strong: #3d3b35;
+    --ink: #efede6;
+    --ink-hover: #d6d3ca;
+    --body: #b6b3a9;
+    --muted: #8c897f;
+    --muted-soft: #6b685f;
+    --success: #3fb68b;
+    --warning: #d9a441;
+    --warning-soft: #261f13;
+    --warning-line: #4a3b1f;
+    --error: #ec5f82;
+    --error-soft: #2a171c;
+    --error-line: #552a36;
+    --pill-track: var(--canvas-soft);
+    --pill-active: var(--surface-strong);
+    /* Dark steps of the same eight hues, validated as a set against the
+       dark card (#1c1b18): adjacent CVD ΔE ≥ 8.4, all ≥ 3:1 contrast. */
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #0ca30c;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --series-other: #78756c;
+    --chart-dim: #2a2925;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -108,9 +224,34 @@
     background: var(--primary);
     flex: 0 0 auto;
   }
-  .admin-entry {
+  .nav-actions {
     order: 2;
     margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  /* Theme toggle: cycles 跟随系统 → the opposite theme → the other → back. */
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: var(--surface-card);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--rounded-md);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .theme-toggle:hover { border-color: var(--muted-soft); }
+  .theme-toggle:active { background: var(--canvas-soft); }
+  .theme-toggle svg { display: none; }
+  :root[data-theme-pref="system"] .theme-toggle [data-icon="system"],
+  :root[data-theme-pref="light"] .theme-toggle [data-icon="light"],
+  :root[data-theme-pref="dark"] .theme-toggle [data-icon="dark"] { display: block; }
+  .admin-entry {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -239,7 +380,9 @@
     :root { --gutter: 24px; }
     .wordmark { height: 64px; order: 1; }
     .tab-bar { order: 2; width: auto; height: 64px; gap: 28px; border-top: 0; }
-    .admin-entry { order: 3; height: 36px; padding: 0 14px; font-size: 14px; }
+    .nav-actions { order: 3; }
+    .theme-toggle { width: 36px; height: 36px; }
+    .admin-entry { height: 36px; padding: 0 14px; font-size: 14px; }
     .page-head {
       flex-direction: row;
       align-items: flex-end;
@@ -627,7 +770,7 @@
     display: inline-flex;
     gap: 2px;
     padding: 3px;
-    background: var(--hairline-soft);
+    background: var(--pill-track);
     border: 1px solid var(--hairline);
     border-radius: 10px;
   }
@@ -647,7 +790,7 @@
   .range-pill:hover { color: var(--ink); }
   .range-pill.active {
     border-color: var(--hairline);
-    background: var(--surface-card);
+    background: var(--pill-active);
     color: var(--ink);
   }
 
@@ -723,15 +866,18 @@
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
+  /* Segments carry their series token in --seg (see seriesColor), so the
+     focus rule below can still override the fill. */
+  #usage-svg rect[data-model] { fill: var(--seg); }
   .usage-hover { cursor: pointer; }
   /* Focus mode: hovering a legend item or a table row dims every model but
      one, across the bars and the legend at once. Pointer devices only —
      there is no hover on touch, so the rules must not stick there. */
   @media (hover: hover) {
-    /* Dim fill has to stay clearly lighter than USAGE_OTHER_COLOR (#a09c92),
-       or focusing a model outside the top 8 lights up an "其他" band nobody
-       can pick out from the bar around it. */
-    #usage-svg.has-active rect[data-model]:not(.is-active) { fill: #ecebe5; }
+    /* --chart-dim has to stay clearly apart from --series-other, or focusing
+       a model outside the top 8 lights up an "其他" band nobody can pick out
+       from the bar around it. */
+    #usage-svg.has-active rect[data-model]:not(.is-active) { fill: var(--chart-dim); }
     .usage-legend.has-active .usage-legend-item:not(.is-active) { opacity: 0.3; }
     .usage-legend-item { cursor: default; transition: opacity 0.12s ease; }
   }
@@ -1023,7 +1169,14 @@
         <button class="tab active" data-tab="balance" role="tab"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>订阅余额</button>
         <button class="tab" data-tab="usage" role="tab"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 13.5V8.5M8 13.5V2.5M13 13.5V6"/></svg>模型用量</button>
       </nav>
-      <a class="admin-entry" href="/admin">管理页 <span aria-hidden="true">→</span></a>
+      <div class="nav-actions">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换主题">
+          <svg data-icon="system" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="5.75"/><path d="M8 2.25a5.75 5.75 0 0 0 0 11.5z" fill="currentColor" stroke="none"/></svg>
+          <svg data-icon="light" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2.75"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.06 1.06M11.54 11.54l1.06 1.06M3.4 12.6l1.06-1.06M11.54 4.46l1.06-1.06"/></svg>
+          <svg data-icon="dark" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M13.25 9.75A5.5 5.5 0 0 1 6.25 2.75a5.5 5.5 0 1 0 7 7z"/></svg>
+        </button>
+        <a class="admin-entry" href="/admin">管理页 <span aria-hidden="true">→</span></a>
+      </div>
     </div>
   </header>
   <main class="page shell">
@@ -1185,6 +1338,17 @@ applyUsageRange(usageRange);
 const USAGE_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const USAGE_OTHER_COLOR = '#a09c92';
 const USAGE_OTHER_LABEL = '其他';  // must match USAGE_OTHER_LABEL in web.py
+
+// Series colors arrive as light-mode hex. Paint them through the --series-N
+// tokens instead, so the dark theme swaps every series to its dark step
+// without re-rendering. Unknown colors pass through unchanged.
+function seriesColor(hex) {
+  const key = String(hex || '').toLowerCase();
+  const slot = USAGE_COLORS.indexOf(key);
+  if (slot >= 0) return `var(--series-${slot + 1})`;
+  if (key === USAGE_OTHER_COLOR) return 'var(--series-other)';
+  return hex;
+}
 let lastUsageModels = [];  // [{label,color,...}] from the most recent fetch
 let lastUsageData = null;  // raw payload from the most recent fetch, for re-render on resize
 
@@ -1336,7 +1500,7 @@ function renderUsageChart(data) {
       const segmentColor = m.color || colorByLabel[m.label] || USAGE_OTHER_COLOR;
       // Every segment above the first gives up its bottom edge to a surface gap.
       const drawH = segIdx === 0 ? h : Math.max(0, h - segGap);
-      barsSvg += `<rect data-model="${escapeHtml(m.label)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${drawH.toFixed(1)}" fill="${segmentColor}"/>`;
+      barsSvg += `<rect data-model="${escapeHtml(m.label)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${drawH.toFixed(1)}" style="--seg:${seriesColor(segmentColor)}"/>`;
       cursor = y;
     });
     if (stackH > 0) barsSvg += '</g>';
@@ -1350,7 +1514,7 @@ function renderUsageChart(data) {
   let legendHtml = '';
   modelSummary.forEach((m, i) => {
     legendHtml += `<div class="usage-legend-item" data-model="${escapeHtml(m.label)}">
-      <span class="usage-legend-swatch" style="background:${m.color}"></span>
+      <span class="usage-legend-swatch" style="background:${seriesColor(m.color)}"></span>
       <span class="usage-legend-label">${escapeHtml(m.label)}</span>
       <span class="usage-legend-share">${Number(m.share_pct || 0).toFixed(1)}%</span>
     </div>`;
@@ -1378,7 +1542,7 @@ function renderUsageChart(data) {
     const rows = day.models
       .filter(m => m.total > 0)
       .map(m => `<div class="usage-tooltip-row">
-          <span class="usage-tooltip-model"><span class="history-dot" style="background:${colorByLabel[m.label] || USAGE_OTHER_COLOR}"></span><span>${escapeHtml(m.label)}</span></span>
+          <span class="usage-tooltip-model"><span class="history-dot" style="background:${seriesColor(colorByLabel[m.label] || USAGE_OTHER_COLOR)}"></span><span>${escapeHtml(m.label)}</span></span>
           <span class="usage-tooltip-tokens">输入 ${formatTokens(m.input_tokens)} · 输出 ${formatTokens(m.output_tokens)} · 缓存读 ${formatTokens(m.cache_read_tokens || 0)} · 缓存写 ${formatTokens(m.cache_write_tokens || 0)} · 推理 ${formatTokens(m.reasoning_tokens || 0)} · 共 ${formatTokens(m.total)}</span>
         </div>`).join('');
     // Days with no usage still get a slot on the axis, so the tooltip has to
@@ -1518,7 +1682,7 @@ function renderUsageTable() {
     const color = m.color || USAGE_OTHER_COLOR;
     return `<tr data-model="${escapeHtml(chartGroupFor(m.label))}">
       <td class="col-model"><span class="usage-table-model-cell">
-        <span class="usage-table-swatch" style="background:${color}"></span>
+        <span class="usage-table-swatch" style="background:${seriesColor(color)}"></span>
         <span class="usage-table-label">${escapeHtml(m.label)}</span>
       </span></td>
       <td class="num col-detail">${formatTokens(m.input_tokens || 0)}</td>
@@ -1730,7 +1894,9 @@ const TOKEN_PERIOD_LABELS = {
 };
 
 const GLM_HISTORY_PROVIDERS = new Set(['GLM Coding Plan', 'GLM Coding Plan 国际版']);
-const HISTORY_COLORS = USAGE_COLORS.slice(0, 6);
+// Token references ("var(--series-N)"), so they must be applied through
+// style — SVG presentation attributes do not resolve var().
+const HISTORY_COLORS = USAGE_COLORS.slice(0, 6).map(seriesColor);
 const cardViewModes = {};
 
 function hasHistoryUsage(data) {
@@ -1871,7 +2037,7 @@ function handleHistoryHover(event, svg, tooltipEl, cursorEl, dotEls, points, nor
         const modelY = height - padY - ((v / Math.max(1, ...normalizedModels.flatMap(m => m.tokens_usage))) * (height - padY * 2));
         el.setAttribute('cx', point.x.toFixed(1));
         el.setAttribute('cy', modelY.toFixed(1));
-        el.setAttribute('fill', model.color);
+        el.style.fill = model.color;
         el.style.display = 'block';
       } else {
         el.style.display = 'none';
@@ -1904,9 +2070,9 @@ function renderHistoryView(data) {
   const maxValue = Math.max(1, ...normalizedModels.flatMap(m => m.tokens_usage));
   const points = buildHistoryPointCoords(normalizedModels[0].tokens_usage, maxValue, width, height, padX, padY);
   const lines = normalizedModels.map(model => `
-    <polyline class="history-line" stroke="${model.color}" points="${buildPolyline(model.tokens_usage, maxValue, width, height, padX, padY)}"></polyline>
+    <polyline class="history-line" style="stroke:${model.color}" points="${buildPolyline(model.tokens_usage, maxValue, width, height, padX, padY)}"></polyline>
   `).join('');
-  const dots = normalizedModels.map((model, i) => `<circle class="history-cursor-dot" data-idx="${i}" data-model="${model.model_name}" cx="0" cy="0" r="4" fill="${model.color}" style="display:none"></circle>`).join('');
+  const dots = normalizedModels.map((model, i) => `<circle class="history-cursor-dot" data-idx="${i}" data-model="${model.model_name}" cx="0" cy="0" r="4" style="fill:${model.color};display:none"></circle>`).join('');
   const modelRows = normalizedModels.map(model => {
     const calls = model.total_calls === null || model.total_calls === undefined
       ? ''

@@ -81,7 +81,9 @@ def test_usage_chart_segments_do_not_depend_on_day_model_color():
     end = h.index("// Legend below the chart")
     bar_renderer = h[start:end]
     assert 'fill="${m.color}"' not in bar_renderer
-    assert 'fill="${segmentColor}"' in bar_renderer
+    assert "${seriesColor(m.color)}" not in bar_renderer
+    # Painted through the series token so the dark theme can re-step it.
+    assert 'style="--seg:${seriesColor(segmentColor)}"' in bar_renderer
 
 
 def test_usage_chart_legend_renders_below_svg():

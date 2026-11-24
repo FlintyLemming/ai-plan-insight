@@ -9,6 +9,64 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Non-blocking, same as the dashboard: system fonts stand in if this fails. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+<script>
+  // Theme: a stored choice (light / dark) wins, otherwise follow the OS.
+  // Runs before first paint so the page never flashes the wrong theme. The
+  // dashboard and the admin page share this script and the storage key.
+  (function () {
+    var KEY = 'ai-plan-insight:theme';
+    var LABELS = { system: '跟随系统', light: '浅色', dark: '深色' };
+    var root = document.documentElement;
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    function read() {
+      try {
+        var v = localStorage.getItem(KEY);
+        return v === 'light' || v === 'dark' ? v : 'system';
+      } catch (e) { return 'system'; }
+    }
+    var pref = read();
+    function apply() {
+      var theme = pref === 'system' ? (mq.matches ? 'dark' : 'light') : pref;
+      root.setAttribute('data-theme', theme);
+      root.setAttribute('data-theme-pref', pref);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', theme === 'dark' ? '#131210' : '#f7f7f4');
+      var btn = document.getElementById('theme-toggle');
+      if (btn) {
+        var text = '主题：' + LABELS[pref] + (pref === 'system' ? '（' + LABELS[theme] + '）' : '');
+        btn.title = text;
+        btn.setAttribute('aria-label', text + '，点击切换');
+      }
+    }
+    // From 跟随系统 the first click always flips what is on screen; the cycle
+    // then visits the other explicit theme and returns to 跟随系统.
+    function next() {
+      var os = mq.matches ? 'dark' : 'light';
+      var other = os === 'dark' ? 'light' : 'dark';
+      return pref === 'system' ? other : (pref === other ? os : 'system');
+    }
+    apply();
+    if (mq.addEventListener) mq.addEventListener('change', apply);
+    else if (mq.addListener) mq.addListener(apply);
+    // Keep other open tabs (dashboard ↔ admin) in step.
+    window.addEventListener('storage', function (e) {
+      if (e.key === KEY) { pref = read(); apply(); }
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      apply();
+      btn.addEventListener('click', function () {
+        pref = next();
+        try {
+          if (pref === 'system') localStorage.removeItem(KEY);
+          else localStorage.setItem(KEY, pref);
+        } catch (e) { /* storage blocked: the choice lasts for this page only */ }
+        apply();
+      });
+    });
+  })();
+</script>
 <style>
   /* Same tokens as the dashboard (index.html). Orange marks only the wordmark
      and the two entry actions (新建实例 / 登录); every save is ink. */
@@ -34,6 +92,10 @@
     --error: #cf2d56;
     --error-soft: #fcf0f3;
     --error-line: #f1cfd8;
+    --ink-hover: #3a3930;
+    --focus-ring: rgba(38, 37, 30, 0.08);
+    --backdrop: rgba(38, 37, 30, 0.32);
+    color-scheme: light;
     --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
     --rounded-xs: 4px;
@@ -45,6 +107,31 @@
     --shell-max: calc(1200px + 2 * var(--gutter));
     --nav-h: 0px;          /* the top nav only sticks from 640px up */
     --subnav-h: 48px;      /* the section chip row below 1024px */
+  }
+  /* Dark theme — same values as the dashboard's dark block. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #131210;
+    --canvas-soft: #181714;
+    --surface-card: #1c1b18;
+    --surface-strong: #2c2b26;
+    --hairline: #2c2b26;
+    --hairline-soft: #242320;
+    --hairline-strong: #3d3b35;
+    --ink: #efede6;
+    --ink-hover: #d6d3ca;
+    --body: #b6b3a9;
+    --muted: #8c897f;
+    --muted-soft: #6b685f;
+    --success: #3fb68b;
+    --warning: #d9a441;
+    --warning-soft: #261f13;
+    --warning-line: #4a3b1f;
+    --error: #ec5f82;
+    --error-soft: #2a171c;
+    --error-line: #552a36;
+    --focus-ring: rgba(239, 237, 230, 0.14);
+    --backdrop: rgba(0, 0, 0, 0.6);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -130,9 +217,35 @@
     background: var(--primary);
     flex: 0 0 auto;
   }
-  .admin-entry {
+  .nav-actions {
     order: 2;
     margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  /* Theme toggle: cycles 跟随系统 → the opposite theme → the other → back.
+     Sizes override the global button rule below. */
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: var(--surface-card);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--rounded-md);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .theme-toggle:hover { border-color: var(--muted-soft); }
+  .theme-toggle:active { background: var(--canvas-soft); }
+  .theme-toggle svg { display: none; }
+  :root[data-theme-pref="system"] .theme-toggle [data-icon="system"],
+  :root[data-theme-pref="light"] .theme-toggle [data-icon="light"],
+  :root[data-theme-pref="dark"] .theme-toggle [data-icon="dark"] { display: block; }
+  .admin-entry {
     display: inline-flex;
     align-items: center;
     height: 32px;
@@ -197,7 +310,7 @@
   button:active { background: var(--canvas-soft); }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
   button.primary { background: var(--ink); border-color: var(--ink); color: var(--canvas); }
-  button.primary:hover { background: #3a3930; border-color: #3a3930; }
+  button.primary:hover { background: var(--ink-hover); border-color: var(--ink-hover); }
   button.primary.cta { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
   button.primary.cta:hover { background: var(--primary-active); border-color: var(--primary-active); }
   button.danger { color: var(--error); border-color: var(--error-line); }
@@ -234,7 +347,7 @@
   input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--ink);
-    box-shadow: 0 0 0 3px rgba(38, 37, 30, 0.08);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
   input:disabled, select:disabled { background: var(--canvas-soft); color: var(--muted); }
   input[type="checkbox"] {
@@ -487,7 +600,7 @@
 
   /* ---- Modal ---- */
   .backdrop {
-    position: fixed; inset: 0; background: rgba(38, 37, 30, 0.32);
+    position: fixed; inset: 0; background: var(--backdrop);
     display: flex; align-items: flex-start; justify-content: center;
     padding: 32px 16px; overflow-y: auto; z-index: 50;
   }
@@ -529,7 +642,9 @@
     .top-nav { position: sticky; top: 0; }
     .wordmark { height: 64px; }
     .tab-bar { order: 2; width: auto; height: 64px; gap: 28px; border-top: 0; }
-    .admin-entry { order: 3; height: 36px; padding: 0 14px; font-size: 14px; }
+    .nav-actions { order: 3; }
+    .theme-toggle { width: 36px; height: 36px; }
+    .admin-entry { height: 36px; padding: 0 14px; font-size: 14px; }
     .page-head {
       flex-direction: row;
       align-items: flex-end;
@@ -594,7 +709,14 @@
       <a class="tab" href="/?tab=balance"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>订阅余额</a>
       <a class="tab" href="/?tab=usage"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 13.5V8.5M8 13.5V2.5M13 13.5V6"/></svg>模型用量</a>
     </nav>
-    <a class="admin-entry" href="/admin" aria-current="page">管理页</a>
+    <div class="nav-actions">
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换主题">
+        <svg data-icon="system" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="5.75"/><path d="M8 2.25a5.75 5.75 0 0 0 0 11.5z" fill="currentColor" stroke="none"/></svg>
+        <svg data-icon="light" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2.75"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.06 1.06M11.54 11.54l1.06 1.06M3.4 12.6l1.06-1.06M11.54 4.46l1.06-1.06"/></svg>
+        <svg data-icon="dark" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M13.25 9.75A5.5 5.5 0 0 1 6.25 2.75a5.5 5.5 0 1 0 7 7z"/></svg>
+      </button>
+      <a class="admin-entry" href="/admin" aria-current="page">管理页</a>
+    </div>
   </div>
 </header>
 
