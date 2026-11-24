@@ -60,9 +60,16 @@ class TestShell:
 
     def test_uses_the_dashboard_palette(self):
         h = read_admin()
-        assert "#0f172a" in h
-        assert "#1e293b" in h
-        assert "#334155" in h
+        dashboard = INDEX_HTML.read_text(encoding="utf-8")
+        for token in (
+            "--canvas: #f7f7f4;",
+            "--surface-card: #ffffff;",
+            "--hairline: #e6e5e0;",
+            "--ink: #26251e;",
+            "--primary: #f54e00;",
+        ):
+            assert token in h
+            assert token in dashboard
 
 
 class TestInstancesSection:

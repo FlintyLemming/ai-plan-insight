@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 
 # Fixed palette for the usage chart, assigned in order of model rank (grand
 # total desc). Models beyond the palette limit are rolled into "其他" (Other).
-USAGE_PALETTE = ["#38bdf8", "#f59e0b", "#34d399", "#f472b6", "#a78bfa", "#fbbf24", "#22d3ee", "#fb7185"]
-USAGE_OTHER_COLOR = "#64748b"
+# Fixed categorical order — validated for colour-vision-deficiency separation
+# between adjacent stacked segments on a white surface. Do not reorder.
+USAGE_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
+USAGE_OTHER_COLOR = "#a09c92"
 USAGE_OTHER_LABEL = "其他"
 USAGE_PALETTE_LIMIT = 8
 

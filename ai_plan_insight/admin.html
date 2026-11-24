@@ -3,293 +3,919 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#f7f7f4">
 <title>AI Plan Insight · 管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Non-blocking, same as the dashboard: system fonts stand in if this fails. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
 <style>
+  /* Same tokens as the dashboard (index.html). Orange marks only the wordmark
+     and the two entry actions (新建实例 / 登录); every save is ink. */
+  :root {
+    --primary: #f54e00;
+    --primary-active: #d04200;
+    --canvas: #f7f7f4;
+    --canvas-soft: #fafaf7;
+    --surface-card: #ffffff;
+    --surface-strong: #e6e5e0;
+    --hairline: #e6e5e0;
+    --hairline-soft: #efeee8;
+    --hairline-strong: #cfcdc4;
+    --ink: #26251e;
+    --body: #5a5852;
+    --muted: #807d72;
+    --muted-soft: #a09c92;
+    --on-primary: #ffffff;
+    --success: #1f8a65;
+    --warning: #b7791f;
+    --warning-soft: #fbf5ea;
+    --warning-line: #ecd9b4;
+    --error: #cf2d56;
+    --error-soft: #fcf0f3;
+    --error-line: #f1cfd8;
+    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+    --rounded-xs: 4px;
+    --rounded-sm: 6px;
+    --rounded-md: 8px;
+    --rounded-lg: 12px;
+    --rounded-pill: 9999px;
+    --gutter: 16px;
+    --shell-max: calc(1200px + 2 * var(--gutter));
+    --nav-h: 0px;          /* the top nav only sticks from 640px up */
+    --subnav-h: 48px;      /* the section chip row below 1024px */
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    background: var(--canvas);
+    color: var(--body);
     min-height: 100vh;
-    padding: 1.25rem 0.75rem 4rem;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
   }
-  .wrap { max-width: 960px; margin: 0 auto; }
-  header {
-    display: flex; align-items: baseline; justify-content: space-between;
-    gap: 1rem; margin-bottom: 1.25rem;
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  a { color: var(--ink); }
+  strong, b { color: var(--ink); font-weight: 600; }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--ink);
+    background: var(--hairline-soft);
+    border: 1px solid var(--hairline);
+    border-radius: var(--rounded-xs);
+    padding: 0 4px;
   }
-  h1 { font-size: 1.35rem; }
-  h2 { font-size: 1.05rem; margin-bottom: 0.75rem; }
-  a { color: #38bdf8; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .panel {
-    background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-    padding: 1.25rem; margin-bottom: 1.25rem;
+  pre {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--canvas-soft);
+    border: 1px solid var(--hairline);
+    border-radius: var(--rounded-md);
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin-top: 6px;
   }
-  .muted { color: #94a3b8; font-size: 0.85rem; }
-  .error { color: #fca5a5; }
-  .ok { color: #34d399; }
-  label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.25rem; }
-  input, select, textarea {
-    width: 100%; background: #0f172a; color: #e2e8f0;
-    border: 1px solid #334155; border-radius: 8px;
-    padding: 0.5rem 0.6rem; font: inherit;
+  .page { flex: 1 0 auto; }
+  .shell {
+    width: 100%;
+    max-width: var(--shell-max);
+    margin: 0 auto;
+    padding-left: var(--gutter);
+    padding-right: var(--gutter);
   }
-  input:focus, select:focus, textarea:focus { outline: 1px solid #38bdf8; }
-  textarea { min-height: 8rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-  .field { margin-bottom: 0.9rem; }
-  .field .help { font-size: 0.78rem; color: #64748b; margin-top: 0.25rem; }
-  .req::after { content: " *"; color: #fca5a5; }
-  button {
-    background: #334155; color: #e2e8f0; border: 1px solid #475569;
-    border-radius: 8px; padding: 0.45rem 0.9rem; font: inherit; cursor: pointer;
+  .muted { color: var(--muted); font-size: 14px; }
+  .error { color: var(--error); }
+  .ok { color: var(--success); }
+
+  /* ---- Top navigation (shared with the dashboard) ---- */
+  .top-nav {
+    background: var(--canvas);
+    border-bottom: 1px solid var(--hairline);
+    z-index: 30;
+  }
+  .top-nav-inner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: 32px;
+  }
+  .wordmark {
+    order: 1;
+    height: 56px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     white-space: nowrap;
   }
-  button:hover { background: #475569; }
-  button.primary { background: #0284c7; border-color: #0ea5e9; }
-  button.primary:hover { background: #0ea5e9; }
-  button.danger { background: #7f1d1d; border-color: #991b1b; }
-  button.danger:hover { background: #991b1b; }
-  button.link { background: none; border: none; color: #38bdf8; padding: 0.2rem 0.35rem; }
-  .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .row input, .row select { min-width: 0; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid #334155; }
-  th { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
-  td.num input { width: 5rem; }
-  tr.row-disabled { opacity: 0.45; }
-  tr.row-error td { border-bottom-color: #7f1d1d; }
-  .row-error-msg { color: #fca5a5; font-size: 0.78rem; }
-  .banner {
-    border-radius: 10px; padding: 0.8rem 1rem; margin-bottom: 0.75rem;
-    border: 1px solid #334155; background: #1e293b; font-size: 0.88rem;
+  .wordmark-mark {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--primary);
+    flex: 0 0 auto;
   }
-  .banner.warn { border-color: #b45309; background: #27210f; }
-  .banner .banner-head { display: flex; justify-content: space-between; gap: 1rem; }
+  .admin-entry {
+    order: 2;
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: var(--rounded-md);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    /* You are here: the destination button is inverted to ink. */
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    color: var(--canvas);
+  }
+  .tab-bar {
+    order: 3;
+    width: 100%;
+    height: 44px;
+    display: flex;
+    align-items: stretch;
+    gap: 24px;
+    border-top: 1px solid var(--hairline-soft);
+  }
+  .tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--body);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .tab svg { flex: 0 0 auto; opacity: 0.75; }
+  .tab:hover { color: var(--ink); }
+
+  /* ---- Buttons ----
+     default = white secondary · .primary = ink (saves) · .cta = Cursor Orange
+     (entry actions only) · .danger = destructive · .link = inline text */
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 14px;
+    background: var(--surface-card);
+    color: var(--ink);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--rounded-md);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover { border-color: var(--muted-soft); }
+  button:active { background: var(--canvas-soft); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.primary { background: var(--ink); border-color: var(--ink); color: var(--canvas); }
+  button.primary:hover { background: #3a3930; border-color: #3a3930; }
+  button.primary.cta { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+  button.primary.cta:hover { background: var(--primary-active); border-color: var(--primary-active); }
+  button.danger { color: var(--error); border-color: var(--error-line); }
+  button.danger:hover { background: var(--error-soft); border-color: var(--error); }
+  button.link {
+    height: auto;
+    padding: 2px 4px;
+    background: none;
+    border: none;
+    border-radius: var(--rounded-xs);
+    color: var(--ink);
+    font-size: 13px;
+    text-decoration: underline;
+    text-decoration-color: var(--hairline-strong);
+    text-underline-offset: 3px;
+  }
+  button.link:hover { text-decoration-color: var(--ink); }
+  button.link[data-delete], button.link[data-alias-remove], button.link[data-price-clear] { color: var(--error); text-decoration-color: var(--error-line); }
+
+  /* ---- Forms ---- */
+  label { display: block; font-size: 13px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
+  input, select, textarea {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    background: var(--surface-card);
+    color: var(--ink);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--rounded-md);
+    font: inherit;
+    font-size: 14px;
+  }
+  input::placeholder, textarea::placeholder { color: var(--muted-soft); }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--ink);
+    box-shadow: 0 0 0 3px rgba(38, 37, 30, 0.08);
+  }
+  input:disabled, select:disabled { background: var(--canvas-soft); color: var(--muted); }
+  input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    flex: 0 0 auto;
+    accent-color: var(--ink);
+    box-shadow: none;
+  }
+  textarea {
+    height: auto;
+    min-height: 10rem;
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  .help { font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: 6px; }
+  .help a { color: var(--ink); }
+  .req::after { content: " *"; color: var(--error); }
+  .check-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-weight: 400;
+    color: var(--body);
+    font-size: 14px;
+    line-height: 1.4;
+    cursor: pointer;
+    margin: 0;
+  }
+  .check-label input { margin-top: 1px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row input, .row select { min-width: 0; }
+  .input-row { display: flex; gap: 8px; align-items: center; }
+  .input-row input { flex: 1 1 auto; min-width: 0; }
+
+  /* ---- Banners ---- */
+  #banners:not(:empty) { padding-top: 24px; }
+  .banner {
+    border-radius: var(--rounded-lg); padding: 12px 16px; margin-bottom: 8px;
+    border: 1px solid var(--hairline); background: var(--surface-card);
+    font-size: 14px; color: var(--ink);
+  }
+  .banner.warn { border-color: var(--warning-line); background: var(--warning-soft); }
+  .banner .banner-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+
+  /* ---- Login ---- */
+  .login-card {
+    width: 100%;
+    max-width: 400px;
+    margin: 64px auto 0;
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--rounded-lg);
+    padding: 32px 24px 24px;
+  }
+  .login-card h2 {
+    font-size: 26px;
+    font-weight: 400;
+    line-height: 1.25;
+    letter-spacing: -0.325px;
+    color: var(--ink);
+  }
+  .login-card .login-lede { margin: 8px 0 24px; font-size: 14px; color: var(--muted); }
+  .login-card .login-actions { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+  .login-card .login-actions button { height: 40px; }
+  .login-card p + p { margin-top: 8px; }
+
+  /* ---- Admin page header ---- */
+  .page-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 32px 0 24px;
+  }
+  h1 {
+    font-size: 32px;
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.8px;
+    color: var(--ink);
+  }
+  .page-lede {
+    margin-top: 10px;
+    max-width: 40rem;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--body);
+  }
+
+  /* ---- Section nav + sections ---- */
+  .admin-layout { display: block; }
+  .section-nav {
+    position: sticky;
+    top: var(--nav-h);
+    z-index: 20;
+    height: var(--subnav-h);
+    margin: 0 calc(-1 * var(--gutter)) 8px;
+    padding: 0 var(--gutter);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: var(--canvas);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .section-nav::-webkit-scrollbar { display: none; }
+  .section-nav-group { display: contents; }
+  .section-nav-label { display: none; }
+  .section-nav a {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--rounded-pill);
+    color: var(--body);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .section-nav a:hover { color: var(--ink); }
+  .section-nav a.active { background: var(--surface-strong); color: var(--ink); }
+  .admin-sections { min-width: 0; }
+  .section {
+    padding-top: 32px;
+    scroll-margin-top: calc(var(--nav-h) + var(--subnav-h) + 8px);
+  }
+  .section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    margin-bottom: 16px;
+  }
+  .section-head-text { min-width: 0; flex: 1 1 18rem; }
+  h2 {
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1.3;
+    letter-spacing: -0.11px;
+    color: var(--ink);
+  }
+  .section-desc {
+    margin-top: 6px;
+    max-width: 44rem;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--body);
+  }
+  .section-actions { display: flex; gap: 8px; align-items: center; }
+  .panel {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--rounded-lg);
+    overflow: hidden;
+  }
+  .panel-body { padding: 20px 16px; }
+  .panel-empty { padding: 20px 16px; }
+  /* Save bar: status on the left, actions on the right. */
+  .panel-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 12px 16px;
+    background: var(--canvas-soft);
+    border-top: 1px solid var(--hairline);
+  }
+  .panel-foot > span { font-size: 13px; }
+  .panel-foot .actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .panel-split { display: grid; gap: 20px; }
+  .panel-split > * { min-width: 0; }
+  .alias-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .alias-row input:first-child { flex: 0 0 34%; }
+  .alias-row input { min-width: 0; }
+  .alias-row input[data-alias-ids] { font-family: var(--font-mono); font-size: 13px; }
+  #aliases-rows:empty::before {
+    content: "还没有别名，点「添加一组」开始。";
+    display: block;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ---- Tables ---- */
+  .table-scroll { overflow-x: auto; }
+  /* Narrow screens scroll the table sideways instead of breaking IDs. */
+  .table-scroll td { white-space: nowrap; }
+  .table-scroll .row-error-msg { white-space: normal; min-width: 14rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td {
+    text-align: left;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--hairline-soft);
+    vertical-align: middle;
+  }
+  th {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.88px;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--canvas-soft);
+    border-bottom-color: var(--hairline);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--canvas-soft); }
+  td.num input { width: 5.5rem; height: 32px; padding: 0 8px; font-family: var(--font-mono); font-size: 13px; }
+  .mono { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+  .inst-label { color: var(--ink); font-weight: 500; }
+  .inst-id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: var(--rounded-pill);
+    background: var(--surface-strong);
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.88px;
+    text-transform: uppercase;
+    line-height: 1.4;
+  }
+  .status-dot { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .status-dot::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted-soft);
+  }
+  .status-dot.on::before { background: var(--success); }
+  tr.row-disabled td { opacity: 0.5; }
+  tr.row-error td { background: var(--error-soft); border-bottom-color: var(--error-line); }
+  .row-error-msg { color: var(--error); font-size: 12px; margin-top: 4px; }
+  td.actions, th:last-child { text-align: right; white-space: nowrap; }
+  td.actions .row { justify-content: flex-end; flex-wrap: nowrap; }
+
+  /* ---- Modal ---- */
   .backdrop {
-    position: fixed; inset: 0; background: rgba(2, 6, 23, 0.75);
+    position: fixed; inset: 0; background: rgba(38, 37, 30, 0.32);
     display: flex; align-items: flex-start; justify-content: center;
-    padding: 2rem 1rem; overflow-y: auto; z-index: 10;
+    padding: 32px 16px; overflow-y: auto; z-index: 50;
   }
   .modal {
-    background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-    padding: 1.25rem; width: 100%; max-width: 560px;
+    background: var(--surface-card); border: 1px solid var(--hairline-strong);
+    border-radius: var(--rounded-lg); width: 100%; max-width: 560px;
+    overflow: hidden;
   }
-  .modal-actions { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 1rem; }
-  .test-result { margin-top: 0.75rem; font-size: 0.85rem; white-space: pre-wrap; }
-  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px;
-        padding: 0.6rem; overflow-x: auto; font-size: 0.78rem; }
+  .modal-head { padding: 20px 24px 0; }
+  .modal-body { padding: 20px 24px 4px; }
+  .modal-actions {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 12px 24px; margin-top: 16px;
+    background: var(--canvas-soft); border-top: 1px solid var(--hairline);
+  }
+  .test-result { font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: var(--body); }
+  .test-result:not(:empty) {
+    margin: 0 24px 16px;
+    padding: 12px 14px;
+    background: var(--canvas-soft);
+    border: 1px solid var(--hairline);
+    border-radius: var(--rounded-md);
+  }
+  .modal-error:not(:empty) { margin: 0 24px 16px; font-size: 13px; }
+
+  /* ---- Footer ---- */
+  .site-footer { margin-top: 80px; border-top: 1px solid var(--hairline); }
+  .site-footer-inner {
+    padding-top: 24px; padding-bottom: 32px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px;
+    font-size: 13px; color: var(--muted);
+  }
+  .site-footer a { color: var(--body); text-decoration: none; }
+  .site-footer a:hover { color: var(--ink); }
+
+  /* ---- Breakpoints ---- */
+  @media (min-width: 640px) {
+    :root { --gutter: 24px; --nav-h: 64px; }
+    .top-nav { position: sticky; top: 0; }
+    .wordmark { height: 64px; }
+    .tab-bar { order: 2; width: auto; height: 64px; gap: 28px; border-top: 0; }
+    .admin-entry { order: 3; height: 36px; padding: 0 14px; font-size: 14px; }
+    .page-head {
+      flex-direction: row;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 32px;
+      padding: 56px 0 32px;
+    }
+    h1 { font-size: 44px; letter-spacing: -1.3px; }
+    .page-lede { font-size: 16px; margin-top: 14px; }
+    .panel-body { padding: 24px; }
+    .panel-empty { padding: 20px 24px; }
+    .panel-foot { padding: 12px 24px; }
+    th:first-child, td:first-child { padding-left: 24px; }
+    th:last-child, td:last-child { padding-right: 24px; }
+    .panel-split { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    .login-card { margin-top: 96px; padding: 40px 32px 32px; }
+  }
+  /* Desktop: the section nav becomes a sticky sidebar beside the sections. */
+  @media (min-width: 1024px) {
+    :root { --subnav-h: 0px; }
+    .admin-layout {
+      display: grid;
+      grid-template-columns: 184px minmax(0, 1fr);
+      gap: 56px;
+      align-items: start;
+    }
+    .section-nav {
+      top: calc(var(--nav-h) + 32px);
+      height: auto;
+      margin: 32px 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 20px;
+      overflow: visible;
+      background: none;
+      border: 0;
+    }
+    .section-nav-group { display: flex; flex-direction: column; gap: 2px; }
+    .section-nav-label {
+      display: block;
+      padding: 0 10px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.88px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .section-nav a { height: 34px; padding: 0 10px; border-radius: var(--rounded-md); font-size: 14px; }
+    .section-nav a.active { background: var(--surface-card); box-shadow: inset 0 0 0 1px var(--hairline); }
+    .section { padding-top: 32px; scroll-margin-top: calc(var(--nav-h) + 16px); }
+    .section + .section { padding-top: 48px; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>AI Plan Insight · 管理</h1>
-    <a href="/">← 返回看板</a>
-  </header>
+<header class="top-nav">
+  <div class="top-nav-inner shell">
+    <a class="wordmark" href="/"><span class="wordmark-mark" aria-hidden="true"></span><span>AI Plan Insight</span></a>
+    <nav class="tab-bar" aria-label="看板视图">
+      <a class="tab" href="/?tab=balance"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>订阅余额</a>
+      <a class="tab" href="/?tab=usage"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 13.5V8.5M8 13.5V2.5M13 13.5V6"/></svg>模型用量</a>
+    </nav>
+    <a class="admin-entry" href="/admin" aria-current="page">管理页</a>
+  </div>
+</header>
 
+<div class="shell page">
   <div id="banners"></div>
 
-  <section class="panel" id="login-view" style="display:none;">
-    <h2>登录</h2>
-    <div id="login-form">
-      <div class="field">
-        <label for="password-input">管理密码</label>
-        <input id="password-input" type="password" autocomplete="current-password">
+  <section id="login-view" style="display:none;">
+    <div class="login-card">
+      <h2>登录管理页</h2>
+      <p class="login-lede">配置订阅实例、模型别名与推送认证。</p>
+      <div id="login-form">
+        <div class="field">
+          <label for="password-input">管理密码</label>
+          <input id="password-input" type="password" autocomplete="current-password">
+        </div>
+        <div class="login-actions">
+          <button class="primary cta" id="login-btn">登录</button>
+          <span class="error" id="login-error"></span>
+        </div>
       </div>
-      <div class="row">
-        <button class="primary" id="login-btn">登录</button>
-        <span class="error" id="login-error"></span>
+      <div id="login-unconfigured" style="display:none;">
+        <p class="error">未设置管理密码。</p>
+        <p class="muted">请设置环境变量 <code>ADMIN_PASSWORD</code> 后重启服务，再回到本页登录。</p>
       </div>
-    </div>
-    <div id="login-unconfigured" style="display:none;">
-      <p class="error">未设置管理密码。</p>
-      <p class="muted">请设置环境变量 <code>ADMIN_PASSWORD</code> 后重启服务，再回到本页登录。</p>
     </div>
   </section>
 
   <main id="admin-view" style="display:none;">
-    <section class="panel" id="instances-panel">
-      <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
-        <h2 style="margin:0;">订阅实例</h2>
-        <div class="row">
-          <button class="primary" id="new-instance-btn">新建实例</button>
-          <button class="link" id="logout-btn">退出登录</button>
+    <div class="page-head">
+      <div>
+        <h1>管理</h1>
+        <p class="page-lede">配置看板的数据来源与显示方式。所有配置保存在 SQLite 数据库 <code>usage.db</code> 中。</p>
+      </div>
+      <button id="logout-btn">退出登录</button>
+    </div>
+
+    <div class="admin-layout">
+      <nav class="section-nav" id="section-nav" aria-label="设置分区">
+        <div class="section-nav-group">
+          <div class="section-nav-label">数据源</div>
+          <a href="#instances-panel">订阅实例</a>
         </div>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>标签</th><th>类型</th><th>模式</th><th>排序</th><th>状态</th><th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="instances-body"></tbody>
-      </table>
-      <p class="muted" id="instances-empty" style="display:none; margin-top:0.75rem;">
-        还没有实例，点「新建实例」添加一个。
-      </p>
-    </section>
-
-    <section class="panel" id="aliases-panel">
-      <h2>模型别名</h2>
-      <p class="muted" style="margin-bottom:0.75rem;">
-        把不同来源上报的原始模型 ID 归并到同一个展示名；未配置的 ID 原样展示。
-      </p>
-      <div id="aliases-rows"></div>
-      <div class="row" style="margin-top:0.75rem;">
-        <button id="alias-add-btn">添加一组</button>
-        <button class="primary" id="alias-save-btn">保存别名</button>
-        <span id="alias-status" class="muted"></span>
-      </div>
-    </section>
-
-    <section class="panel" id="prices-panel">
-      <h2>模型价格</h2>
-      <p class="muted" style="margin-bottom:0.75rem;">
-        成本按每个原始模型 ID 的单价计算，价格自动从 LiteLLM / OpenRouter / models.dev 获取；
-        这里只列出这三个源都查不到价的模型，填了才会计入成本。
-        单位 <strong>USD / 百万 Token</strong>，照抄各家定价页即可。
-      </p>
-      <table id="prices-table">
-        <thead>
-          <tr>
-            <th>模型 ID</th><th>近 90 天 Token</th><th>输入</th><th>输出</th>
-            <th>缓存读取</th><th>缓存写入</th><th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="prices-body"></tbody>
-      </table>
-      <p class="muted" id="prices-empty" style="display:none; margin-top:0.75rem;">
-        近 90 天内没有缺少价格的模型。
-      </p>
-      <p class="muted" id="prices-not-ready" style="display:none; margin-top:0.75rem;">
-        价格数据尚未就绪，请稍后刷新。
-      </p>
-      <div class="row" style="margin-top:0.75rem;">
-        <button class="primary" id="price-save-btn">保存价格</button>
-        <span id="price-status" class="muted"></span>
-      </div>
-    </section>
-
-    <section class="panel" id="push-auth-panel">
-      <h2>推送认证</h2>
-      <p class="muted" style="margin-bottom:0.75rem;">
-        <code>POST /api/push/v2/{instance_id}</code> 与 <code>POST /api/usage/report</code>
-        共用这一个 token。
-      </p>
-      <div class="field">
-        <label for="push-secret">push_auth_secret</label>
-        <div class="row" style="flex-wrap:nowrap;">
-          <input id="push-secret" data-masked="1">
-          <button class="link" id="push-secret-reveal-btn">显示</button>
-          <button class="link" id="push-secret-generate-btn">生成随机值</button>
+        <div class="section-nav-group">
+          <div class="section-nav-label">模型</div>
+          <a href="#aliases-panel">模型别名</a>
+          <a href="#prices-panel">模型价格</a>
         </div>
-      </div>
-      <div class="field">
-        <label class="row" style="gap:0.4rem;">
-          <input id="enforce-push-auth" type="checkbox" style="width:auto;">
-          <span>强制校验（enforce_push_auth）：关闭时 token 错误只记日志，开启后直接 401</span>
-        </label>
-      </div>
-      <div class="row">
-        <button class="primary" id="push-auth-save-btn">保存推送认证</button>
-        <span id="push-auth-status" class="muted"></span>
-      </div>
-    </section>
+        <div class="section-nav-group">
+          <div class="section-nav-label">系统</div>
+          <a href="#push-auth-panel">推送认证</a>
+          <a href="#display-settings-panel">显示设置</a>
+          <a href="#password-panel">管理密码</a>
+          <a href="#io-panel">导入导出</a>
+        </div>
+      </nav>
 
-    <section class="panel" id="display-settings-panel">
-      <h2>显示设置</h2>
-      <p class="muted" style="margin-bottom:0.75rem;">
-        push 模式的订阅卡片在最后一次推送后超过该时长会从面板隐藏；fetch 模式卡片不受影响（始终展示）。单位为<b>小时</b>，允许小数，最小 <code>0.5</code>（30 分钟）。
-      </p>
-      <div class="field">
-        <label for="push-card-ttl">推送卡片最长显示时长（小时）</label>
-        <input id="push-card-ttl" type="number" min="0.5" step="any">
-      </div>
-      <div class="row">
-        <button class="primary" id="display-settings-save-btn">保存显示设置</button>
-        <span id="display-settings-status" class="muted"></span>
-      </div>
-    </section>
+      <div class="admin-sections">
+        <section class="section" id="instances-panel">
+          <div class="section-head">
+            <div class="section-head-text">
+              <h2>订阅实例</h2>
+              <p class="section-desc">每个实例对应看板上的一张卡片。fetch 模式由面板主动拉取，push 模式等待本地 Agent 推送。</p>
+            </div>
+            <div class="section-actions">
+              <button class="primary cta" id="new-instance-btn">新建实例</button>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>标签</th><th>类型</th><th>模式</th><th>排序</th><th>状态</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="instances-body"></tbody>
+              </table>
+            </div>
+            <p class="muted panel-empty" id="instances-empty" style="display:none;">
+              还没有实例，点「新建实例」添加一个。
+            </p>
+          </div>
+        </section>
 
-    <section class="panel" id="password-panel">
-      <h2>管理密码</h2>
-      <div class="field">
-        <label for="pwd-old">原密码</label>
-        <input id="pwd-old" type="password" autocomplete="current-password">
-      </div>
-      <div class="field">
-        <label for="pwd-new">新密码</label>
-        <input id="pwd-new" type="password" autocomplete="new-password">
-        <div class="help">至少 8 位。修改成功后其他设备的登录会全部失效。</div>
-      </div>
-      <div class="field">
-        <label for="pwd-confirm">确认新密码</label>
-        <input id="pwd-confirm" type="password" autocomplete="new-password">
-      </div>
-      <div class="row">
-        <button class="primary" id="pwd-save-btn">修改密码</button>
-        <button class="danger" id="logout-all-btn">退出所有设备</button>
-        <span id="pwd-status" class="muted"></span>
-      </div>
-    </section>
+        <section class="section" id="aliases-panel">
+          <div class="section-head">
+            <div class="section-head-text">
+              <h2>模型别名</h2>
+              <p class="section-desc">把不同来源上报的原始模型 ID 归并到同一个展示名；未配置的 ID 原样展示。</p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-body">
+              <div id="aliases-rows"></div>
+              <button id="alias-add-btn" style="margin-top:4px;">添加一组</button>
+            </div>
+            <div class="panel-foot">
+              <span id="alias-status" class="muted status"></span>
+              <div class="actions">
+                <button class="primary" id="alias-save-btn">保存别名</button>
+              </div>
+            </div>
+          </div>
+        </section>
 
-    <section class="panel" id="io-panel">
-      <h2>导入导出</h2>
-      <p class="muted" style="margin-bottom:0.75rem;">
-        导出的 JSON 含明文凭据，请妥善保管；它不包含管理密码。
-      </p>
-      <div class="row" style="margin-bottom:0.9rem;">
-        <button id="export-btn">导出配置</button>
+        <section class="section" id="prices-panel">
+          <div class="section-head">
+            <div class="section-head-text">
+              <h2>模型价格</h2>
+              <p class="section-desc">
+                成本按每个原始模型 ID 的单价计算，价格自动从 LiteLLM / OpenRouter / models.dev 获取；
+                这里只列出这三个源都查不到价的模型，填了才会计入成本。
+                单位 <strong>USD / 百万 Token</strong>，照抄各家定价页即可。
+              </p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="table-scroll">
+              <table id="prices-table">
+                <thead>
+                  <tr>
+                    <th>模型 ID</th><th>近 90 天 Token</th><th>输入</th><th>输出</th>
+                    <th>缓存读取</th><th>缓存写入</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="prices-body"></tbody>
+              </table>
+            </div>
+            <p class="muted panel-empty" id="prices-empty" style="display:none;">
+              近 90 天内没有缺少价格的模型。
+            </p>
+            <p class="muted panel-empty" id="prices-not-ready" style="display:none;">
+              价格数据尚未就绪，请稍后刷新。
+            </p>
+            <div class="panel-foot">
+              <span id="price-status" class="muted status"></span>
+              <div class="actions">
+                <button class="primary" id="price-save-btn">保存价格</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="push-auth-panel">
+          <div class="section-head">
+            <div class="section-head-text">
+              <h2>推送认证</h2>
+              <p class="section-desc">
+                <code>POST /api/push/v2/{instance_id}</code> 与 <code>POST /api/usage/report</code>
+                共用这一个 token。
+              </p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-body">
+              <div class="field">
+                <label for="push-secret">push_auth_secret</label>
+                <div class="input-row">
+                  <input id="push-secret" data-masked="1" class="mono">
+                  <button class="link" id="push-secret-reveal-btn">显示</button>
+                  <button class="link" id="push-secret-generate-btn">生成随机值</button>
+                </div>
+              </div>
+              <div class="field">
+                <label class="check-label">
+                  <input id="enforce-push-auth" type="checkbox">
+                  <span>强制校验（enforce_push_auth）：关闭时 token 错误只记日志，开启后直接 401</span>
+                </label>
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span id="push-auth-status" class="muted status"></span>
+              <div class="actions">
+                <button class="primary" id="push-auth-save-btn">保存推送认证</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="display-settings-panel">
+          <div class="section-head">
+            <div class="section-head-text">
+              <h2>显示设置</h2>
+              <p class="section-desc">
+                push 模式的订阅卡片在最后一次推送后超过该时长会从面板隐藏；fetch 模式卡片不受影响（始终展示）。单位为<b>小时</b>，允许小数，最小 <code>0.5</code>（30 分钟）。
+              </p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-body">
+              <div class="field" style="max-width:20rem;">
+                <label for="push-card-ttl">推送卡片最长显示时长（小时）</label>
+                <input id="push-card-ttl" type="number" min="0.5" step="any">
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span id="display-settings-status" class="muted status"></span>
+              <div class="actions">
+                <button class="primary" id="display-settings-save-btn">保存显示设置</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="password-panel">
+          <div class="section-head">
+            <div class="section-head-text">
+              <h2>管理密码</h2>
+              <p class="section-desc">至少 8 位。修改成功后其他设备的登录会全部失效。</p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-body">
+              <div class="field" style="max-width:24rem;">
+                <label for="pwd-old">原密码</label>
+                <input id="pwd-old" type="password" autocomplete="current-password">
+              </div>
+              <div class="panel-split">
+                <div class="field">
+                  <label for="pwd-new">新密码</label>
+                  <input id="pwd-new" type="password" autocomplete="new-password">
+                </div>
+                <div class="field">
+                  <label for="pwd-confirm">确认新密码</label>
+                  <input id="pwd-confirm" type="password" autocomplete="new-password">
+                </div>
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span id="pwd-status" class="muted status"></span>
+              <div class="actions">
+                <button class="danger" id="logout-all-btn">退出所有设备</button>
+                <button class="primary" id="pwd-save-btn">修改密码</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="io-panel">
+          <div class="section-head">
+            <div class="section-head-text">
+              <h2>导入导出</h2>
+              <p class="section-desc">导出的 JSON 含明文凭据，请妥善保管；它不包含管理密码。</p>
+            </div>
+            <div class="section-actions">
+              <button id="export-btn">导出配置</button>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-body">
+              <div class="field">
+                <label for="import-text">粘贴配置 JSON</label>
+                <textarea id="import-text" placeholder='{"providers": {...}}'></textarea>
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span id="io-status" class="muted status"></span>
+              <div class="actions">
+                <button class="danger" id="import-btn">导入（将覆盖现有全部配置）</button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
-      <div class="field">
-        <label for="import-text">粘贴配置 JSON</label>
-        <textarea id="import-text" placeholder='{"providers": {...}}'></textarea>
-      </div>
-      <div class="row">
-        <button class="danger" id="import-btn">导入（将覆盖现有全部配置）</button>
-        <span id="io-status" class="muted"></span>
-      </div>
-    </section>
+    </div>
   </main>
 </div>
 
+<footer class="site-footer">
+  <div class="site-footer-inner shell">
+    <span>AI Plan Insight · 管理</span>
+    <a href="/">返回看板</a>
+  </div>
+</footer>
+
 <div class="backdrop" id="modal-backdrop" style="display:none;">
-  <div class="modal">
-    <h2 id="modal-title">新建实例</h2>
-    <div class="field">
-      <label class="req" for="modal-instance-id">实例 ID</label>
-      <input id="modal-instance-id" placeholder="claude-personal">
-      <div class="help" id="modal-instance-id-help">
-        push 实例的推送 URL 会用到它，只能包含字母、数字、<code>.</code>、<code>_</code>、<code>-</code>。
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <h2 id="modal-title">新建实例</h2>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="req" for="modal-instance-id">实例 ID</label>
+        <input id="modal-instance-id" placeholder="claude-personal" class="mono">
+        <div class="help" id="modal-instance-id-help">
+          push 实例的推送 URL 会用到它，只能包含字母、数字、<code>.</code>、<code>_</code>、<code>-</code>。
+        </div>
       </div>
+      <div class="panel-split">
+        <div class="field">
+          <label class="req" for="modal-type">类型</label>
+          <select id="modal-type"></select>
+        </div>
+        <div class="field">
+          <label class="req" for="modal-mode">模式</label>
+          <select id="modal-mode"></select>
+        </div>
+      </div>
+      <div class="help" id="modal-type-summary" style="margin:-8px 0 18px;"></div>
+      <div class="panel-split">
+        <div class="field">
+          <label class="req" for="modal-label">标签</label>
+          <input id="modal-label" placeholder="个人号">
+          <div class="help">卡片标题会显示为「类型名 · 标签」。</div>
+        </div>
+        <div class="field">
+          <label for="modal-order">排序</label>
+          <input id="modal-order" type="number" value="999">
+          <div class="help">数值越小越靠前，默认 999。</div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="check-label">
+          <input id="modal-enabled" type="checkbox" checked>
+          <span>启用（停用后该实例对运行时完全不存在）</span>
+        </label>
+      </div>
+      <div id="modal-credentials"></div>
     </div>
-    <div class="field">
-      <label class="req" for="modal-type">类型</label>
-      <select id="modal-type"></select>
-      <div class="help" id="modal-type-summary"></div>
-    </div>
-    <div class="field">
-      <label class="req" for="modal-mode">模式</label>
-      <select id="modal-mode"></select>
-    </div>
-    <div class="field">
-      <label class="req" for="modal-label">标签</label>
-      <input id="modal-label" placeholder="个人号">
-      <div class="help">卡片标题会显示为「类型名 · 标签」。</div>
-    </div>
-    <div class="field">
-      <label for="modal-order">排序</label>
-      <input id="modal-order" type="number" value="999">
-      <div class="help">数值越小越靠前，默认 999。</div>
-    </div>
-    <div class="field">
-      <label class="row" style="gap:0.4rem;">
-        <input id="modal-enabled" type="checkbox" checked style="width:auto;">
-        <span>启用（停用后该实例对运行时完全不存在）</span>
-      </label>
-    </div>
-    <div id="modal-credentials"></div>
+    <div class="test-result" id="modal-test-result"></div>
+    <div class="error modal-error" id="modal-error"></div>
     <div class="modal-actions">
       <button id="modal-test-btn">测试连接</button>
       <div class="row">
@@ -297,8 +923,6 @@
         <button class="primary" id="modal-save-btn">保存</button>
       </div>
     </div>
-    <div class="test-result" id="modal-test-result"></div>
-    <div class="error" id="modal-error" style="margin-top:0.5rem;"></div>
   </div>
 </div>
 
@@ -452,14 +1076,14 @@ function renderInstances() {
     if (error) classes.push('row-error');
     const typeName = (typeByName(inst.type) || {}).display_name || inst.type;
     return `<tr class="${classes.join(' ')}">
-      <td>${esc(inst.label)}<div class="muted">${esc(inst.instance_id)}</div>
+      <td><div class="inst-label">${esc(inst.label)}</div><div class="inst-id">${esc(inst.instance_id)}</div>
         ${error ? `<div class="row-error-msg">${esc(error)}</div>` : ''}</td>
       <td>${esc(typeName)}</td>
-      <td>${esc(inst.mode)}</td>
+      <td><span class="badge">${esc(inst.mode)}</span></td>
       <td class="num"><input type="number" value="${inst.order}"
           data-order-for="${esc(inst.instance_id)}"></td>
-      <td>${inst.enabled ? '启用' : '停用'}</td>
-      <td><div class="row">
+      <td><span class="status-dot ${inst.enabled ? 'on' : ''}">${inst.enabled ? '启用' : '停用'}</span></td>
+      <td class="actions"><div class="row">
         <button class="link" data-edit="${esc(inst.instance_id)}">编辑</button>
         <button class="link" data-delete="${esc(inst.instance_id)}">删除</button>
       </div></td>
@@ -564,7 +1188,7 @@ function renderCredentialFields() {
     const value = f.secret ? masked : (stored[f.name] || '');
     return `<div class="field">
       <label class="${required ? 'req' : ''}" for="cred-${esc(f.name)}">${esc(f.label)}</label>
-      <div class="row" style="flex-wrap:nowrap;">
+      <div class="input-row">
         <input id="cred-${esc(f.name)}" data-cred="${esc(f.name)}"
                data-secret="${f.secret ? '1' : '0'}"
                data-masked="${f.secret && masked ? '1' : '0'}"
@@ -661,7 +1285,7 @@ async function testConnection() {
     const p = data.push;
     box.innerHTML = `<div>推送地址：<code>${esc(p.url)}</code></div>
       <div>推送认证：${p.push_auth_configured ? '已配置' : '<span class="error">未配置 push_auth_secret</span>'}</div>
-      <div class="muted" style="margin-top:0.4rem;">请求体格式：</div>
+      <div class="muted" style="margin-top:8px;">请求体格式：</div>
       <pre>${esc(JSON.stringify(p.payload_schema, null, 2))}</pre>`;
     return;
   }
@@ -703,7 +1327,7 @@ function renderAliases() {
   const box = document.getElementById('aliases-rows');
   const entries = Object.entries(ALIASES);
   box.innerHTML = entries.map(([label, rawIds], i) => `
-    <div class="row" style="margin-bottom:0.5rem; flex-wrap:nowrap;">
+    <div class="alias-row">
       <input data-alias-label="${i}" value="${esc(label)}" placeholder="展示名">
       <input data-alias-ids="${i}" value="${esc(rawIds.join(', '))}"
              placeholder="原始 ID，用逗号分隔">
@@ -779,11 +1403,11 @@ async function loadPrices() {
   empty.style.display = models.length ? 'none' : 'block';
   body.innerHTML = models.map(m => `
     <tr data-price-row="${esc(m.model_id)}">
-      <td>${esc(m.model_id)}</td>
-      <td>${Number(m.total_tokens).toLocaleString()}</td>
+      <td class="mono">${esc(m.model_id)}</td>
+      <td class="mono">${Number(m.total_tokens).toLocaleString()}</td>
       ${PRICE_FIELDS.map(f => `<td class="num"><input type="number" min="0" step="any"
         data-price-field="${f}" value="${m.price ? esc(m.price[f]) : ''}"></td>`).join('')}
-      <td><button class="link" data-price-clear="1">清空</button></td>
+      <td class="actions"><button class="link" data-price-clear="1">清空</button></td>
     </tr>`).join('');
   body.querySelectorAll('[data-price-clear]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -995,7 +1619,40 @@ document.getElementById('logout-all-btn').addEventListener('click', logoutAll);
 document.getElementById('export-btn').addEventListener('click', doExport);
 document.getElementById('import-btn').addEventListener('click', doImport);
 
-boot();
+// ── section nav: highlight the section being read ─────────
+
+function updateSectionNav() {
+  const nav = document.getElementById('section-nav');
+  if (!nav || !nav.offsetParent) return;   // admin view hidden (logged out)
+  const links = [...nav.querySelectorAll('a[href^="#"]')];
+  const sections = links.map(a => document.getElementById(a.getAttribute('href').slice(1))).filter(Boolean);
+  if (!sections.length) return;
+  // A section counts as current once its top passes just under the sticky
+  // chrome; at the very bottom of the page the last one wins, since short
+  // final sections can never scroll that far up.
+  const line = parseFloat(getComputedStyle(sections[0]).scrollMarginTop) + 24;
+  let current = sections[0].id;
+  sections.forEach(s => { if (s.getBoundingClientRect().top <= line) current = s.id; });
+  const doc = document.documentElement;
+  if (window.innerHeight + window.scrollY >= doc.scrollHeight - 4) current = sections[sections.length - 1].id;
+  links.forEach(a => {
+    const on = a.getAttribute('href') === '#' + current;
+    if (on && !a.classList.contains('active') && nav.scrollWidth > nav.clientWidth) {
+      // Phone chip row: keep the active chip in view without moving the page.
+      nav.scrollTo({ left: a.offsetLeft - nav.clientWidth / 2 + a.offsetWidth / 2, behavior: 'smooth' });
+    }
+    a.classList.toggle('active', on);
+  });
+}
+
+let sectionNavFrame = null;
+window.addEventListener('scroll', () => {
+  if (sectionNavFrame) return;
+  sectionNavFrame = requestAnimationFrame(() => { sectionNavFrame = null; updateSectionNav(); });
+}, { passive: true });
+window.addEventListener('resize', updateSectionNav);
+
+boot().then(updateSectionNav);
 </script>
 </body>
 </html>

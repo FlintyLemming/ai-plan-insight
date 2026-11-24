@@ -39,8 +39,8 @@ def test_chart_renderer_and_palette_present():
     h = read_index()
     assert "function renderUsageChart" in h
     assert "USAGE_COLORS" in h
-    assert "#38bdf8" in h   # palette present
-    assert "#64748b" in h   # "其他" color present
+    assert "#2a78d6" in h   # palette present
+    assert "#a09c92" in h   # "其他" color present
 
 
 def test_chart_empty_state_message_present():

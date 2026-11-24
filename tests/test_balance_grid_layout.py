@@ -21,7 +21,8 @@ def test_balance_grid_preserves_desktop_card_width_and_four_column_cap():
         "max-width: calc(4 * var(--balance-card-width) + "
         "3 * var(--balance-grid-gap));"
     ) in base_grid
-    assert "justify-content: center;" in base_grid
+    # Cards align to the left edge they share with the page header.
+    assert "justify-content: start;" in base_grid
     assert (
         "grid-template-columns: repeat(auto-fit, var(--balance-card-width));"
     ) in fixed_track_media
