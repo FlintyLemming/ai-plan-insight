@@ -1227,7 +1227,7 @@
   <footer class="site-footer">
     <div class="site-footer-inner shell">
       <span>AI Plan Insight</span>
-      <span>数据每 60 秒自动刷新 · <a href="/admin">管理页</a></span>
+      <span>数据每 30 秒自动刷新 · <a href="/admin">管理页</a></span>
     </div>
   </footer>
 
@@ -1238,12 +1238,40 @@ const TIME_UNIT_LABELS = {
   tokens_limit: '模型调用',
 };
 
+const AUTO_REFRESH_INTERVAL_MS = 30000;
+let autoRefreshTimer = null;
+let lastAutoRefreshAt = 0;
+let balanceRefreshing = false;
+let usageRefreshing = false;
+let hasLoadedBalance = false;
+
+function formatUpdatedAt(value) {
+  if (!value) return '';
+  const dt = value instanceof Date ? value : new Date(value);
+  if (isNaN(dt.getTime())) return String(value);
+  const pad = n => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+}
+
 const TAB_KEY = 'ai-plan-insight:tab';
 // The admin page's menu links here as /?tab=…; honour it once, then drop it
 // from the address bar so a later reload follows the remembered tab again.
 const urlTab = new URLSearchParams(location.search).get('tab');
 if (urlTab) history.replaceState(null, '', location.pathname);
 let activeTab = urlTab || localStorage.getItem(TAB_KEY) || 'balance';
+
+function refreshActiveTab() {
+  lastAutoRefreshAt = Date.now();
+  if (activeTab === 'balance') return refreshV2();
+  if (activeTab === 'usage') return refreshUsageChart();
+}
+
+function scheduleAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(() => {
+    refreshActiveTab();
+  }, AUTO_REFRESH_INTERVAL_MS);
+}
 
 async function initTabs() {
   document.querySelectorAll('.tab').forEach(btn => {
@@ -1276,16 +1304,14 @@ function applyTab(tab) {
   const usageView = document.getElementById('usage-chart-view');
   grid.style.display = (tab === 'balance') ? 'grid' : 'none';
   usageView.style.display = (tab === 'usage') ? 'block' : 'none';
-  if (tab === 'balance') refreshV2();
-  else if (tab === 'usage') refreshUsageChart();
+  refreshActiveTab();
+  scheduleAutoRefresh();
 }
-
-initTabs();
 
 async function loadDashboardNotices() {
   let notices;
   try {
-    const resp = await fetch('/api/notices');
+    const resp = await fetch('/api/notices', { cache: 'no-store' });
     notices = await resp.json();
   } catch (e) { return; }
   const box = document.getElementById('notice-banners');
@@ -1317,8 +1343,6 @@ async function loadDashboardNotices() {
   }
 }
 
-loadDashboardNotices();
-
 const RANGE_KEY = 'ai-plan-insight:usage-range';
 let usageRange = Number(localStorage.getItem(RANGE_KEY)) || 90;
 
@@ -1329,20 +1353,26 @@ if (!TABLE_PAGE_SIZES.includes(tablePageSize)) tablePageSize = 10;
 let tableCurrentPage = 1;
 let tableAllModels = [];
 
-function applyUsageRange(range) {
-  usageRange = range;
-  localStorage.setItem(RANGE_KEY, String(range));
+function syncUsageRangePills(range) {
   document.querySelectorAll('.range-pill').forEach(btn => {
     btn.classList.toggle('active', Number(btn.getAttribute('data-range')) === range);
   });
+}
+
+function applyUsageRange(range) {
+  usageRange = range;
+  tableCurrentPage = 1;
+  localStorage.setItem(RANGE_KEY, String(range));
+  syncUsageRangePills(range);
   refreshUsageChart();
+  scheduleAutoRefresh();
 }
 
 document.querySelectorAll('.range-pill').forEach(btn => {
   btn.addEventListener('click', () => applyUsageRange(Number(btn.getAttribute('data-range'))));
 });
 
-applyUsageRange(usageRange);
+syncUsageRangePills(usageRange);
 
 // Categorical order is the CVD-safety mechanism (validated adjacent pairs on
 // white); keep it in sync with USAGE_PALETTE in web.py, which assigns colors.
@@ -1416,7 +1446,6 @@ function renderUsageChart(data) {
   const tableContainer = document.getElementById('usage-table-container');
   if (data) lastUsageData = data;
   tableAllModels = (data && Array.isArray(data.all_models)) ? data.all_models : [];
-  tableCurrentPage = 1;
   if (!data || !data.days || data.days.length === 0) {
     container.innerHTML = '<div class="empty-usage">暂无用量数据</div>';
     if (tableContainer) tableContainer.innerHTML = '';
@@ -1616,15 +1645,19 @@ function renderUsageChart(data) {
   svgEl.addEventListener('touchend', hideUsageTooltip);
   svgEl.addEventListener('touchcancel', hideUsageTooltip);
 
-  // Tap outside the SVG to dismiss (e.g. when tooltip remains after touch end)
-  document.addEventListener('touchstart', (e) => {
-    if (!svgEl.contains(e.target) && !tooltip.contains(e.target)) {
-      hideUsageTooltip();
-    }
-  }, { passive: true });
-
   renderUsageTable();
+  const hovered = document.querySelector('.usage-legend-item:hover, .usage-table tbody tr:hover');
+  if (hovered) setActiveUsageModel(hovered.getAttribute('data-model'));
 }
+
+// Tap outside the SVG to dismiss (delegated once so periodic refreshes do not accumulate listeners)
+document.addEventListener('touchstart', (e) => {
+  const svgEl = document.getElementById('usage-svg');
+  const tooltip = document.getElementById('usage-tooltip');
+  if (svgEl && tooltip && !svgEl.contains(e.target) && !tooltip.contains(e.target)) {
+    tooltip.style.display = 'none';
+  }
+}, { passive: true });
 
 function buildPageNumbers(current, total) {
   // Produce a compact list of page numbers with `null` gaps for ellipses.
@@ -1776,23 +1809,32 @@ function renderUsageTable() {
 }
 
 async function refreshUsageChart() {
+  if (usageRefreshing) return;
+  usageRefreshing = true;
   const container = document.getElementById('usage-chart-container');
   refreshStaleSources();
   // The global header placeholders are only cleared by the balance-tab
   // refresh paths; when the page loads straight into the usage tab this is
   // the only fetch that runs, so it must resolve them too.
-  const statusPromise = fetch('/api/status/v2').then(r => r.json()).catch(() => null);
+  const statusPromise = fetch('/api/status/v2', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
   try {
-    const resp = await fetch(`/api/usage/timeseries?days=${usageRange}`);
+    const resp = await fetch(`/api/usage/timeseries?days=${usageRange}`, { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     renderUsageChart(data);
     document.getElementById('loading').style.display = 'none';
     const status = await statusPromise;
-    document.getElementById('updated').textContent =
-      status && status.last_updated ? `最后更新：${status.last_updated}` : '';
+    if (activeTab === 'usage') {
+      const ts = formatUpdatedAt(data && data.generated_at) || (status && status.last_updated) || '';
+      document.getElementById('updated').textContent = ts ? `最后更新：${ts}` : '';
+    }
   } catch (e) {
     document.getElementById('loading').style.display = 'none';
-    if (container) container.innerHTML = `<div class="empty-usage">加载失败：${escapeHtml(e.message)}</div>`;
+    if (!lastUsageData && container) {
+      container.innerHTML = `<div class="empty-usage">加载失败：${escapeHtml(e.message)}</div>`;
+    }
+  } finally {
+    usageRefreshing = false;
   }
 }
 
@@ -1832,7 +1874,7 @@ function renderStaleSources(sources) {
 
 async function refreshStaleSources() {
   try {
-    const resp = await fetch('/api/sources/stale');
+    const resp = await fetch('/api/sources/stale', { cache: 'no-store' });
     renderStaleSources(await resp.json());
   } catch (e) {
     // Liveness alert is best-effort; never disturb the usage page.
@@ -2365,35 +2407,51 @@ function renderInstanceErrors(instanceErrors) {
 }
 
 async function refreshV2() {
+  if (balanceRefreshing) return;
+  balanceRefreshing = true;
   try {
-    const [data, status] = await Promise.all([
-      fetch('/api/usage/v2').then(r => r.json()),
-      fetch('/api/status/v2').then(r => r.json()),
+    const [usageResp, statusResp] = await Promise.all([
+      fetch('/api/usage/v2', { cache: 'no-store' }),
+      fetch('/api/status/v2', { cache: 'no-store' }),
     ]);
+    if (!usageResp.ok || !statusResp.ok) {
+      throw new Error(`HTTP ${!usageResp.ok ? usageResp.status : statusResp.status}`);
+    }
+    const [data, status] = await Promise.all([usageResp.json(), statusResp.json()]);
+    const updatedEl = document.getElementById('updated');
     if (!status.enabled) {
       const grid = document.getElementById('grid');
       grid.innerHTML = '<div class="empty-usage">尚未配置订阅余额（新）</div>';
       renderBalanceStats([]);
+      hasLoadedBalance = true;
       document.getElementById('loading').style.display = 'none';
+      if (activeTab === 'balance' && updatedEl) updatedEl.textContent = '';
       return;
     }
     if (status.config_error) {
       const grid = document.getElementById('grid');
       grid.innerHTML = `<div class="error-card"><div class="card-title">配置错误</div><div class="error-card-msg">${escapeHtml(status.config_error)}</div></div>`;
       renderBalanceStats([]);
+      hasLoadedBalance = true;
       document.getElementById('loading').style.display = 'none';
+      if (activeTab === 'balance' && updatedEl) updatedEl.textContent = '';
       return;
     }
     latestV2Data = data;
+    hasLoadedBalance = true;
     renderV2Grid(data);
     renderInstanceErrors(status.instance_errors || {});
     document.getElementById('loading').style.display = 'none';
-    const updatedEl = document.querySelector('.updated');
-    if (updatedEl && status.last_updated) {
-      updatedEl.textContent = '最后更新：' + status.last_updated;
+    if (activeTab === 'balance' && updatedEl) {
+      const ts = status.last_updated || formatUpdatedAt(new Date());
+      updatedEl.textContent = ts ? `最后更新：${ts}` : '';
     }
   } catch (e) {
-    document.getElementById('loading').textContent = `加载失败：${e.message}`;
+    if (!hasLoadedBalance) {
+      document.getElementById('loading').textContent = `加载失败：${e.message}`;
+    }
+  } finally {
+    balanceRefreshing = false;
   }
 }
 
@@ -2459,8 +2517,31 @@ function renderV2Grid(data) {
   bindHistoryCharts();
 }
 
-setInterval(() => { if (activeTab === 'balance') refreshV2(); }, 60000);
-setInterval(() => { if (activeTab === 'usage') refreshUsageChart(); }, 60000);
+initTabs();
+loadDashboardNotices();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    refreshActiveTab();
+    scheduleAutoRefresh();
+  }
+});
+window.addEventListener('focus', () => {
+  if (Date.now() - lastAutoRefreshAt >= AUTO_REFRESH_INTERVAL_MS) {
+    refreshActiveTab();
+    scheduleAutoRefresh();
+  }
+});
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) {
+    refreshActiveTab();
+    scheduleAutoRefresh();
+  }
+});
+window.addEventListener('online', () => {
+  refreshActiveTab();
+  scheduleAutoRefresh();
+});
 </script>
 </body>
 </html>

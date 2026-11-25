@@ -167,6 +167,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Plan Insight", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def no_store_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/") or request.url.path in ("/", "/admin"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
 from .admin_api import protected as _admin_protected_router, router as _admin_public_router
 
 app.include_router(_admin_public_router)

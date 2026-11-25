@@ -333,21 +333,30 @@ class V2RuntimeManager:
             logger.warning("v2 snapshot restore failed: %s", e)
             return
 
+        latest_ts: datetime | None = None
         for instance_id, type_name, mode, label, recorded_at, usage in rows:
             title = make_card_title(type_name, label)
             usage.provider = title  # Use current config title
+            ts: datetime | None = None
+            try:
+                ts = datetime.fromisoformat(recorded_at)
+                if ts.tzinfo is None:
+                    ts = ts.astimezone()
+            except Exception:
+                ts = None
             if mode == "push":
-                try:
-                    ts = datetime.fromisoformat(recorded_at)
-                    if ts.tzinfo is None:
-                        ts = ts.astimezone()
-                    self._pushed_results[instance_id] = usage
-                    self._pushed_at[instance_id] = ts
-                except Exception:
+                if ts is None:
                     continue
+                self._pushed_results[instance_id] = usage
+                self._pushed_at[instance_id] = ts
             elif mode == "fetch":
                 self._fetch_results[instance_id] = usage
                 self._prev_results[instance_id] = usage
+            if ts is not None and (latest_ts is None or ts > latest_ts):
+                latest_ts = ts
+
+        if latest_ts is not None and self._last_updated is None:
+            self._last_updated = latest_ts.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         if rows:
             logger.info("v2: restored %d snapshot(s)", len(rows))

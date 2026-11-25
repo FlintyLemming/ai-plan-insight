@@ -219,3 +219,44 @@ def test_model_focus_is_delegated_on_stable_containers():
     fn = h[h.index("function setActiveUsageModel"):h.index("// Delegated once")]
     assert "classList.toggle('has-active'" in fn
     assert "classList.toggle('is-active'" in fn
+
+
+def test_auto_refresh_runs_every_30s_for_both_tabs_and_on_tab_return():
+    h = read_index()
+    assert "数据每 30 秒自动刷新" in h
+    assert "const AUTO_REFRESH_INTERVAL_MS = 30000;" in h
+    fn = h[h.index("function refreshActiveTab"):h.index("async function initTabs")]
+    assert "if (activeTab === 'balance') return refreshV2();" in fn
+    assert "if (activeTab === 'usage') return refreshUsageChart();" in fn
+    assert "setInterval(" in fn
+    assert "document.addEventListener('visibilitychange'" in h
+    assert "window.addEventListener('focus'" in h
+    assert "window.addEventListener('pageshow'" in h
+    assert "window.addEventListener('online'" in h
+
+
+def test_refresh_fetches_disable_browser_cache():
+    h = read_index()
+    assert "fetch('/api/usage/v2', { cache: 'no-store' })" in h
+    assert "fetch('/api/status/v2', { cache: 'no-store' })" in h
+    assert "fetch(`/api/usage/timeseries?days=${usageRange}`, { cache: 'no-store' })" in h
+    assert "fetch('/api/sources/stale', { cache: 'no-store' })" in h
+    assert "fetch('/api/notices', { cache: 'no-store' })" in h
+
+
+def test_init_tabs_runs_after_state_declarations_and_preserves_table_page():
+    h = read_index()
+    init_call_pos = h.rindex("initTabs();")
+    for decl in (
+        "let usageRange =",
+        "let tableCurrentPage =",
+        "let lastUsageData =",
+        "let activeUsageModel =",
+        "let latestV2Data =",
+    ):
+        assert h.index(decl) < init_call_pos
+    chart_fn = h[h.index("function renderUsageChart"):h.index("// Stacked bars")]
+    assert "tableCurrentPage = 1;" not in chart_fn
+    start = h.index("function applyUsageRange")
+    range_fn = h[start:h.index("}", start) + 1]
+    assert "tableCurrentPage = 1;" in range_fn

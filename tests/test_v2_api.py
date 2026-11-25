@@ -200,3 +200,46 @@ class TestV1EndpointsRemoved:
 
     def test_old_push_antigravity_returns_404(self, client: TestClient):
         assert client.post("/api/push/antigravity", json={}).status_code == 404
+
+
+class TestNoStoreHeadersAndRestoredTimestamp:
+    def test_dashboard_and_api_responses_set_cache_control_no_store(self, client: TestClient):
+        for path in ("/", "/admin", "/api/usage/v2", "/api/status/v2", "/api/usage/timeseries?days=7"):
+            resp = client.get(path)
+            assert resp.status_code == 200
+            assert resp.headers.get("cache-control") == "no-store"
+
+    def test_restored_push_snapshot_populates_last_updated(self, tmp_path: Path):
+        import ai_plan_insight.web as web_mod
+        db = seed_config(
+            tmp_path / "usage.db",
+            providers={
+                "claude-personal": {"type": "claude", "mode": "push", "label": "个人号", "order": 12},
+            },
+            push_auth_secret="test-secret",
+            enforce_push_auth=True,
+        )
+        web_mod._config_path = str(tmp_path / "config.json")
+        web_mod._usage_db_path = db
+        web_mod._v2_manager = None
+        web_mod._config_service = None
+        from ai_plan_insight.web import app
+
+        with TestClient(app) as c1:
+            resp = c1.post(
+                "/api/push/v2/claude-personal",
+                json={
+                    "seven_day": {"utilization": 30.0, "resets_at": "2026-07-08T12:00:00Z"},
+                    "five_hour": {"utilization": 10.0, "resets_at": "2026-07-01T15:00:00Z"},
+                },
+                headers={"Authorization": "Bearer test-secret"},
+            )
+            assert resp.status_code == 200
+
+        web_mod._v2_manager = None
+        web_mod._config_service = None
+        with TestClient(app) as c2:
+            status = c2.get("/api/status/v2").json()
+            assert status["last_updated"] is not None
+        web_mod._v2_manager = None
+        web_mod._config_service = None
