@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from ai_plan_insight.instance_config import V2Config, V2InstanceConfig
 from ai_plan_insight.api_schemas import (
     UsageResponse, LimitResponse, ClaudePushRequest, GrokPushRequest,
+    AntigravityPushRequest,
 )
 from ai_plan_insight.provider_instances import (
     V2RuntimeManager,
@@ -259,6 +260,63 @@ class TestReload:
         assert "claude-work" not in mgr._pushed_at
         assert "claude-work" not in mgr._prev_results
         assert "claude-work" not in mgr._consecutive_failures
+
+    def test_reload_drops_fetch_result_when_switched_to_push(self, db_path, monkeypatch):
+        from ai_plan_insight.provider_instances import V2RuntimeManager
+        monkeypatch.setattr(V2RuntimeManager, "restore_snapshots", lambda self: None)
+        monkeypatch.setattr(
+            "ai_plan_insight.provider_instances.asyncio.create_task", lambda *a, **kw: None,
+        )
+        ag = {"type": "antigravity", "label": "主账号", "order": 20}
+        fetch_cfg = self._claude_cfg(extra_providers={
+            "antigravity": {**ag, "mode": "fetch", "api_key": "k", "base_url": "http://x"},
+        })
+        mgr = V2RuntimeManager(fetch_cfg, db_path)
+        stale = UsageResponse(provider="Antigravity · 主账号")
+        for state in (mgr._fetch_results, mgr._prev_results):
+            state["antigravity"] = stale
+        mgr._consecutive_failures["antigravity"] = 3
+
+        mgr.reload(self._claude_cfg(extra_providers={
+            "antigravity": {**ag, "mode": "push"},
+        }), instance_errors={})
+        assert "antigravity" not in mgr._fetch_results
+        assert "antigravity" not in mgr._prev_results
+        assert "antigravity" not in mgr._consecutive_failures
+        assert mgr.get_usage_v2() == []
+
+        payload = AntigravityPushRequest(
+            windows=[{"group": "Claude", "window": "5h", "utilization": 5}],
+        )
+        asyncio.run(mgr.handle_push("antigravity", payload))
+        cards = mgr.get_usage_v2()
+        assert [c["instance_id"] for c in cards] == ["antigravity"]
+        assert cards[0]["limits"][0]["time_unit"] == "Claude 模型 · 5小时"
+
+    def test_reload_drops_push_result_when_switched_to_fetch(self, db_path, monkeypatch):
+        from ai_plan_insight.provider_instances import V2RuntimeManager
+        monkeypatch.setattr(V2RuntimeManager, "restore_snapshots", lambda self: None)
+        monkeypatch.setattr(
+            "ai_plan_insight.provider_instances.asyncio.create_task", lambda *a, **kw: None,
+        )
+        ag = {"type": "antigravity", "label": "主账号", "order": 20}
+        mgr = V2RuntimeManager(
+            self._claude_cfg(extra_providers={"antigravity": {**ag, "mode": "push"}}), db_path,
+        )
+        payload = AntigravityPushRequest(
+            windows=[{"group": "Claude", "window": "5h", "utilization": 5}],
+        )
+        asyncio.run(mgr.handle_push("antigravity", payload))
+        asyncio.run(mgr.handle_push("claude-personal", ClaudePushRequest(
+            five_hour={"utilization": 10.0, "resets_at": "2026-07-01T15:00:00Z"},
+        )))
+
+        mgr.reload(self._claude_cfg(extra_providers={
+            "antigravity": {**ag, "mode": "fetch", "api_key": "k", "base_url": "http://x"},
+        }), instance_errors={})
+        assert "antigravity" not in mgr._pushed_results
+        assert "antigravity" not in mgr._pushed_at
+        assert "claude-personal" in mgr._pushed_results  # unchanged instance kept
 
     def test_reload_restarts_fetch_task_when_fetch_added(self, db_path, monkeypatch):
         from ai_plan_insight.provider_instances import V2RuntimeManager

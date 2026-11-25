@@ -378,15 +378,22 @@ class V2RuntimeManager:
         """Atomically replace the runtime config (hot reload).
 
         1. Stop the old fetch task.
-        2. Drop in-memory results for instances that are no longer in config
-           (push results for remaining instances are preserved).
+        2. Drop in-memory results for instances that are no longer in config,
+           or whose type/mode changed (a fetch card would otherwise linger
+           after switching to push, since nothing refreshes it any more).
+           Results for unchanged instances are preserved.
         3. Swap in the new config + instance_errors, mark enabled.
         4. restore_snapshots() — only restores instances still in the new config.
         5. Restart the fetch task if the new config has fetch instances.
         """
         self.stop()
 
-        new_ids = set(new_config.providers.keys())
+        old_providers = self._config.providers
+        keep_ids = {
+            iid for iid, cfg in new_config.providers.items()
+            if iid not in old_providers
+            or (old_providers[iid].type, old_providers[iid].mode) == (cfg.type, cfg.mode)
+        }
         for state in (
             self._fetch_results,
             self._pushed_results,
@@ -397,7 +404,7 @@ class V2RuntimeManager:
             self._rate_limit_hits,
         ):
             for iid in list(state.keys()):
-                if iid not in new_ids:
+                if iid not in keep_ids:
                     del state[iid]
 
         self._config = new_config
