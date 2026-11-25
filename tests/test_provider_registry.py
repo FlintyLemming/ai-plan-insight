@@ -186,18 +186,52 @@ class TestConvertPushPayload:
 
     def test_antigravity(self):
         payload = AntigravityPushRequest(
-            gemini_3_1_pro_percentage=50.0,
-            gemini_3_1_pro_reset_time="2026-07-01T15:00:00Z",
-            gemini_3_flash_percentage=30.0,
-            gemini_3_flash_reset_time="2026-07-01T15:00:00Z",
-            claude_series_percentage=20.0,
-            claude_series_reset_time="2026-07-01T15:00:00Z",
+            plan="Google AI Ultra",
+            windows=[
+                {"group": "Claude", "window": "5h", "utilization": 12.5,
+                 "resets_at": "2026-11-25T11:21:31Z"},
+                {"group": "Claude", "window": "weekly", "utilization": 40,
+                 "resets_at": "2026-12-02T06:21:31Z"},
+                {"group": "Gemini", "window": "5h", "utilization": 0,
+                 "resets_at": None},
+            ],
         )
         resp = convert_push_payload(
             "antigravity", "ag-test", "Antigravity · 测试", payload,
         )
         assert resp.provider == "Antigravity · 测试"
-        assert len(resp.limits) == 3
+        assert resp.membership_level == "Google AI Ultra"
+        assert [l.time_unit for l in resp.limits] == [
+            "Claude 模型 · 5小时", "Claude 模型 · 周", "Gemini 模型 · 5小时",
+        ]
+        assert all(l.limit_type == "PERCENT" for l in resp.limits)
+        assert [(l.used, l.remaining) for l in resp.limits] == [
+            ("12.50", "87.50"), ("40", "60"), ("0", "100"),
+        ]
+        assert resp.limits[0].reset_time == "2026-11-25T11:21:31Z"
+        assert resp.limits[2].reset_time is None
+
+    def test_antigravity_clamps_utilization(self):
+        payload = AntigravityPushRequest(
+            windows=[{"group": "Claude", "window": "5h", "utilization": 130}],
+        )
+        resp = convert_push_payload("antigravity", "ag", "AG", payload)
+        assert (resp.limits[0].used, resp.limits[0].remaining) == ("100", "0")
+        assert resp.membership_level is None
+
+    def test_antigravity_error(self):
+        payload = AntigravityPushRequest(error="凭证失效")
+        resp = convert_push_payload("antigravity", "ag", "AG", payload)
+        assert resp.error == "凭证失效"
+        assert resp.limits == []
+
+    def test_antigravity_requires_windows_or_error(self):
+        with pytest.raises(ValueError):
+            AntigravityPushRequest()
+        with pytest.raises(ValueError):
+            AntigravityPushRequest(
+                windows=[{"group": "Claude", "window": "daily", "utilization": 1}],
+            )
 
     def test_qianwen_percentage_and_reset(self):
         """千问推送：0-100 百分比 + resets_at，走 PERCENT 条，不再依赖绝对 Credits。"""

@@ -205,33 +205,33 @@ def _fmt_num(v: float) -> str:
     return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
 
 
+_ANTIGRAVITY_WINDOW_LABELS = {"5h": "5小时", "weekly": "周"}
+
+
 def _convert_antigravity(instance_id: str, title: str, payload: AntigravityPushRequest) -> UsageResponse:
+    err = (payload.error or "").strip()
+    if err:
+        return UsageResponse(provider=title, error=err)
+
+    limits: list[LimitResponse] = []
+    for w in payload.windows:
+        used = min(max(w.utilization, 0.0), 100.0)
+        limits.append(
+            LimitResponse(
+                # Same labels as the fetch-mode AntigravityProvider cards.
+                duration=1,
+                time_unit=f"{w.group.strip()} 模型 · {_ANTIGRAVITY_WINDOW_LABELS[w.window]}",
+                limit="100",
+                used=_fmt_num(used),
+                remaining=_fmt_num(100 - used),
+                reset_time=w.resets_at,
+                limit_type="PERCENT",
+            )
+        )
     return UsageResponse(
         provider=title,
-        membership_level="Gemini Ultra",
-        limits=[
-            LimitResponse(
-                duration=5, time_unit="小时 (Gemini 3.1 Pro)",
-                limit="100",
-                used=str(int(payload.gemini_3_1_pro_percentage)),
-                remaining=str(int(100 - payload.gemini_3_1_pro_percentage)),
-                reset_time=payload.gemini_3_1_pro_reset_time,
-            ),
-            LimitResponse(
-                duration=5, time_unit="小时 (Gemini 3 Flash)",
-                limit="100",
-                used=str(int(payload.gemini_3_flash_percentage)),
-                remaining=str(int(100 - payload.gemini_3_flash_percentage)),
-                reset_time=payload.gemini_3_flash_reset_time,
-            ),
-            LimitResponse(
-                duration=5, time_unit="小时 (Claude 系列)",
-                limit="100",
-                used=str(int(payload.claude_series_percentage)),
-                remaining=str(int(100 - payload.claude_series_percentage)),
-                reset_time=payload.claude_series_reset_time,
-            ),
-        ],
+        membership_level=(payload.plan or "").strip() or None,
+        limits=limits,
     )
 
 

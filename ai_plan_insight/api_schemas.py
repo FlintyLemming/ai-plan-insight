@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -60,13 +62,31 @@ class UsageResponse(BaseModel):
 
 
 
+class AntigravityWindowPush(BaseModel):
+    """One quota window of an Antigravity model group.
+
+    ``group`` is the short family name shown on the card (e.g. "Claude",
+    "Gemini"); ``utilization`` is the consumed percentage (0-100).
+    """
+    group: str = Field(min_length=1)
+    window: Literal["5h", "weekly"]
+    utilization: float
+    resets_at: str | None = None
+
+
 class AntigravityPushRequest(BaseModel):
-    gemini_3_1_pro_percentage: float
-    gemini_3_1_pro_reset_time: str
-    gemini_3_flash_percentage: float
-    gemini_3_flash_reset_time: str
-    claude_series_percentage: float
-    claude_series_reset_time: str
+    # Subscription tier display name, e.g. "Google AI Ultra".
+    plan: str | None = None
+    # Rendered in the given order, one bar per entry.
+    windows: list[AntigravityWindowPush] = []
+    # Error status reported by the agent (e.g. the CPA credential is dead).
+    error: str | None = None
+
+    @model_validator(mode="after")
+    def _require_windows_or_error(self) -> "AntigravityPushRequest":
+        if not (self.error or "").strip() and not self.windows:
+            raise ValueError("windows must not be empty unless error is set")
+        return self
 
 
 class CursorPushRequest(BaseModel):

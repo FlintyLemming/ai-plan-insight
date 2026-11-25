@@ -34,7 +34,7 @@
 | 华为云余额 | `huawei_cloud` | fetch | 配置 `user_name` + `access_key_id` + `access_key_secret` | — |
 | AIPing | `aiping` | fetch | 配置 `api_key` | — |
 | ZenMux | `zenmux` | fetch | 配置 `api_key`（Management API Key），同时获取订阅配额与 PAYG 余额 | — |
-| Antigravity | `antigravity` | fetch / push | fetch 模式经 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) 的 API 获取（`api_key` + `base_url`，可选 `admin_password`）；也可用 push 模式由 Agent 推送。原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并） | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
+| Antigravity | `antigravity` | fetch / push | fetch 模式经 [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) 的 API 获取（`api_key` + `base_url`，可选 `admin_password`）；也可用 push 模式由 Agent 推送。原项目未实现周用量读取，可参考我的 [PR #3185](https://github.com/lbjlaq/Antigravity-Manager/pull/3185)（尚未合并）。push 模式可用 gemini-usage-reporter 从 CLIProxyAPI 读取配额推送 | [Antigravity Manager](https://github.com/lbjlaq/Antigravity-Manager) |
 | Cursor | `cursor` | push | 通过 Agent 抓取后推送到面板 | [cursor-usage-agent](https://github.com/FlintyLemming/cursor-usage-agent) |
 | Claude 订阅 | `claude` | push | 通过 Agent 抓取后推送到面板 | [claude-sub-agent](https://github.com/FlintyLemming/claude-sub-agent) |
 | Grok 订阅 | `grok` | push | 通过 Agent 抓取周配额后推送到面板 | — |
@@ -276,21 +276,30 @@ curl -X POST http://localhost:8000/api/push/v2/mimo-main \
 
 ### 推送 Antigravity 用量（type: antigravity）
 
-分别传入 `gemini_3_1_pro`、`gemini_3_flash` 以及 `claude_series` 三款模型证书的 5 小时用量百分比 (`_percentage`) 和重置时间 (`_reset_time`，ISO8601 字符串)。
+`windows` 按顺序逐条渲染为进度条，每条是一个模型组的一个配额窗口：
+
+- `group`：模型组短名，卡片上显示为 `{group} 模型 · 5小时/周`（如 `Claude`、`Gemini`）
+- `window`：`5h` 或 `weekly`
+- `utilization`：已用百分比（0–100）
+- `resets_at`：重置时间（ISO8601 字符串），可为 `null`
+
+`plan` 为可选的订阅档位展示名（如 `Google AI Ultra`）。`windows` 为空时返回 422；Agent 侧取数失败时可推送 `{"error": "..."}`，卡片会显示该错误，直到再次推送正常数据。可使用 `gemini-usage-reporter`（经 CLIProxyAPI 读取 Antigravity 账号配额）自动推送。
 
 ```bash
-curl -X POST http://localhost:8000/api/push/v2/antigravity-main \
+curl -X POST http://localhost:8000/api/push/v2/antigravity \
   -H "Authorization: Bearer your-secret-token" \
   -H "Content-Type: application/json" \
   -d '{
-    "gemini_3_1_pro_percentage": 5.0,
-    "gemini_3_1_pro_reset_time": "2026-04-15T00:00:00Z",
-    "gemini_3_flash_percentage": 0.5,
-    "gemini_3_flash_reset_time": "2026-04-15T00:00:00Z",
-    "claude_series_percentage": 90.5,
-    "claude_series_reset_time": "2026-04-15T00:00:00Z"
+    "plan": "Google AI Ultra",
+    "windows": [
+      {"group": "Claude", "window": "5h", "utilization": 25.0, "resets_at": "2026-11-25T11:21:31Z"},
+      {"group": "Claude", "window": "weekly", "utilization": 10.0, "resets_at": "2026-12-02T06:21:31Z"},
+      {"group": "Gemini", "window": "5h", "utilization": 0.0, "resets_at": "2026-11-25T11:21:45Z"}
+    ]
   }'
 ```
+
+> 旧版扁平格式（`gemini_3_1_pro_percentage` 等字段）已移除，按旧格式推送会返回 422。
 
 ### 推送模型 Token 用量
 
