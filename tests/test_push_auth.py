@@ -76,6 +76,99 @@ def test_report_valid_token_sets_auth_valid(tmp_path, monkeypatch):
     web._config_service = None
 
 
+def test_report_valid_x_report_key_fallback_sets_auth_valid(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post("/api/usage/report", json={
+            "source_id": "macbook-flinty", "source_label": "MacBook Pro",
+            "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+        }, headers={"X-Report-Key": "abc"})
+        assert resp.status_code == 200
+        assert resp.json()["upserted"] == 1
+        conn = sqlite3.connect(tmp_path / "usage.db")
+        rows = usage_store.get_source_auth_status(conn)
+        assert rows[0]["source_id"] == "macbook-flinty"
+        assert rows[0]["auth_valid"] is True
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_report_x_report_key_case_insensitive(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post("/api/usage/report", json={
+            "source_id": "macbook-flinty",
+            "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+        }, headers={"x-report-key": " abc "})
+        assert resp.status_code == 200
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_report_hard_invalid_x_report_key_returns_401(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post("/api/usage/report", json={
+            "source_id": "macbook-flinty",
+            "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+        }, headers={"X-Report-Key": "wrong"})
+        assert resp.status_code == 401
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_report_hard_empty_x_report_key_returns_401(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post("/api/usage/report", json={
+            "source_id": "macbook-flinty",
+            "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+        }, headers={"X-Report-Key": "   "})
+        assert resp.status_code == 401
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_report_authorization_takes_precedence_over_x_report_key(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True) as c:
+        resp = c.post("/api/usage/report", json={
+            "source_id": "macbook-flinty",
+            "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+        }, headers={"Authorization": "Bearer wrong", "X-Report-Key": "abc"})
+        assert resp.status_code == 401
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_report_x_report_key_rejected_when_secret_unconfigured(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch, secret="", enforce=True) as c:
+        resp = c.post("/api/usage/report", json={
+            "source_id": "macbook-flinty",
+            "points": [{"date": TODAY, "model_id": "glm-5.2", "input_tokens": 10, "output_tokens": 5}],
+        }, headers={"X-Report-Key": "abc"})
+        assert resp.status_code == 401
+    web._v2_manager = None
+    web._config_service = None
+
+
+def test_push_v2_x_report_key_fallback(tmp_path, monkeypatch):
+    providers = {
+        "claude-main": {"type": "claude", "mode": "push", "label": "主力", "order": 1},
+    }
+    payload = {
+        "seven_day": {"utilization": 45.2, "resets_at": "2026-07-08T12:00:00Z"},
+        "five_hour": {"utilization": 12.8, "resets_at": "2026-07-01T15:00:00Z"},
+    }
+    with _client(tmp_path, monkeypatch, secret="abc", enforce=True, providers=providers) as c:
+        ok = c.post("/api/push/v2/claude-main", json=payload, headers={"X-Report-Key": "abc"})
+        assert ok.status_code == 200
+        conn = sqlite3.connect(tmp_path / "usage.db")
+        rows = usage_store.get_source_auth_status(conn)
+        claude = [r for r in rows if r["source_id"] == "claude-main"]
+        assert claude and claude[0]["auth_valid"] is True
+
+        bad = c.post("/api/push/v2/claude-main", json=payload, headers={"X-Report-Key": "wrong"})
+        assert bad.status_code == 401
+    web._v2_manager = None
+    web._config_service = None
+
+
 def test_admin_sources_requires_login(tmp_path):
     from config_fixtures import seed_admin_password, seed_config
     db = seed_config(tmp_path / "usage.db")

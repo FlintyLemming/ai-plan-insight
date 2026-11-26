@@ -69,29 +69,38 @@ def _usage_conn() -> sqlite3.Connection:
     return sqlite3.connect(_usage_db_path)
 
 
-def _verify_push_auth(request: Request, source_id: str, cfg) -> tuple[bool, str | None]:
-    """Check the Bearer token against the configured global secret.
+def _verify_push_token(request: Request, secret: str) -> tuple[bool, str | None]:
+    """Verify push authentication against the configured global secret.
+
+    Prefers `Authorization: Bearer <token>`, falling back to
+    `X-Report-Key: <token>` when no `Authorization` header is sent.
 
     Returns (is_valid, reason). `reason` is one of "missing", "malformed",
     or "invalid" when `is_valid` is False, and None when it is True.
     """
-    secret = cfg.push_auth_secret
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    if auth_header:
+        parts = auth_header.split(None, 1)
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return False, "malformed"
+        token = parts[1].strip()
+    else:
+        report_key = (request.headers.get("X-Report-Key") or "").strip()
+        if not report_key:
+            return False, "missing"
+        token = report_key
 
-    auth_header = request.headers.get("Authorization")
-    if not auth_header:
-        return False, "missing"
-
-    parts = auth_header.strip().split(None, 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return False, "malformed"
-
-    token = parts[1].strip()
     if not secret:
         return False, "invalid"
 
     if secrets.compare_digest(token, secret):
         return True, None
     return False, "invalid"
+
+
+def _verify_push_auth(request: Request, source_id: str, cfg) -> tuple[bool, str | None]:
+    """Check the push auth token against the configured global secret."""
+    return _verify_push_token(request, cfg.push_auth_secret)
 
 
 def _record_push_auth(conn: sqlite3.Connection, source_id: str, is_valid: bool) -> None:
@@ -601,17 +610,5 @@ async def push_v2(instance_id: str, request: Request):
 
 
 def _verify_push_auth_v2(request: Request, v2_config) -> tuple[bool, str | None]:
-    """Check Bearer token against v2 config's push_auth_secret."""
-    secret = v2_config.push_auth_secret
-    auth_header = request.headers.get("Authorization")
-    if not auth_header:
-        return False, "missing"
-    parts = auth_header.strip().split(None, 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return False, "malformed"
-    token = parts[1].strip()
-    if not secret:
-        return False, "invalid"
-    if secrets.compare_digest(token, secret):
-        return True, None
-    return False, "invalid"
+    """Check the push auth token against v2 config's push_auth_secret."""
+    return _verify_push_token(request, v2_config.push_auth_secret)

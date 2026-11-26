@@ -355,6 +355,8 @@ curl -X POST http://localhost:8000/api/usage/report \
 Authorization: Bearer <push_auth_secret>
 ```
 
+为兼容携带 `X-Report-Key` 的客户端，当请求未携带 `Authorization` 头时，服务端会回退校验 `X-Report-Key: <push_auth_secret>`（新接入仍推荐使用标准的 `Authorization: Bearer` 头）。
+
 `POST /api/push/v2/{instance_id}` 与 `POST /api/usage/report` 共用唯一的 `push_auth_secret`，所有 push 实例与模型用量上报使用同一个 token。在管理页的「推送认证」区设置，可一键生成随机值。
 
 `enforce_push_auth` 为 `false`（默认）时，token 缺失或错误的请求仍会被接受，只记录为未认证，便于逐个迁移客户端；全部客户端更新完毕后在管理页勾选「强制校验」，未认证请求将返回 `401 Unauthorized`。
