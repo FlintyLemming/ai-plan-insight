@@ -156,6 +156,34 @@ class TestPricesSection:
         assert "近 90 天内没有缺少价格的模型" in h
         assert "价格数据尚未就绪，请稍后刷新" in h
 
+    def test_filter_pills_search_hide_and_truncation(self):
+        h = read_admin()
+        for filt in ("pending", "configured", "all", "hidden"):
+            assert f'data-price-filter="{filt}"' in h
+        assert 'id="price-search"' in h
+        assert "const PRICE_PAGE_SIZE = 8;" in h
+        assert 'id="prices-more-btn"' in h
+        assert "/api/admin/model-prices/hidden" in h
+        assert "data-price-hide" in h
+        assert "data-price-unhide" in h
+        # Saving collects from the full in-memory draft, not visible DOM rows.
+        assert "PRICE_DRAFT" in h
+
+
+class TestCollapsibleSections:
+    def test_all_sections_are_collapsible_with_summary_and_instances_open_by_default(self):
+        h = read_admin()
+        assert 'id="toggle-all-sections-btn"' in h
+        assert "ai-plan-insight:admin-open-sections" in h
+        assert "DEFAULT_OPEN_SECTIONS = ['instances-panel']" in h
+        for section_id in (
+            "instances-panel", "aliases-panel", "prices-panel",
+            "push-auth-panel", "display-settings-panel", "password-panel", "io-panel",
+        ):
+            assert f'data-section="{section_id}"' in h
+        for badge_id in ("nav-badge-instances", "nav-badge-aliases", "nav-badge-prices"):
+            assert f'id="{badge_id}"' in h
+
 
 class TestPushAuthSection:
     def test_secret_reveal_and_generate(self):

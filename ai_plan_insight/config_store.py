@@ -409,8 +409,71 @@ def _write_prices(conn: sqlite3.Connection, mapping: dict) -> None:
 def replace_prices(conn: sqlite3.Connection, mapping: dict) -> None:
     validate_prices(mapping)
     _write_prices(conn, mapping)
+    priced = {k.strip().lower() for k in mapping}
+    if priced:
+        current_hidden = get_hidden_price_models(conn)
+        remaining = [m for m in current_hidden if m not in priced]
+        if len(remaining) != len(current_hidden):
+            _write_hidden_price_models(conn, remaining)
     _bump_version(conn)
     conn.commit()
+
+
+# ── hidden price models ───────────────────────────────────────
+
+HIDDEN_PRICE_MODELS_KEY = "hidden_price_models"
+
+
+def validate_hidden_price_models(models) -> list[str]:
+    """Validate and normalize hidden price model ids (sorted, lowercased, unique)."""
+    if not isinstance(models, list):
+        raise ValueError("hidden_price_models must be a list")
+    out: set[str] = set()
+    for item in models:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("hidden model id must be a non-empty string")
+        out.add(item.strip().lower())
+    return sorted(out)
+
+
+def get_hidden_price_models(conn: sqlite3.Connection) -> list[str]:
+    """Read hidden price model ids from app_setting, defaulting to [].
+
+    Never raises: malformed data degrades to an empty list rather than
+    breaking the admin price panel or config export.
+    """
+    raw = get_setting(conn, HIDDEN_PRICE_MODELS_KEY)
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return sorted({
+        item.strip().lower()
+        for item in parsed
+        if isinstance(item, str) and item.strip()
+    })
+
+
+def _write_hidden_price_models(conn: sqlite3.Connection, models: list[str]) -> list[str]:
+    normalized = validate_hidden_price_models(models)
+    _set_setting(
+        conn,
+        HIDDEN_PRICE_MODELS_KEY,
+        json.dumps(normalized, ensure_ascii=False),
+    )
+    return normalized
+
+
+def replace_hidden_price_models(conn: sqlite3.Connection, models) -> list[str]:
+    """Validate, write and commit. Does NOT bump config_version — hiding a
+    row only curates the admin UI and has no effect on runtime pricing."""
+    normalized = _write_hidden_price_models(conn, models)
+    conn.commit()
+    return normalized
 
 
 # ── push auth ─────────────────────────────────────────────────
@@ -565,6 +628,7 @@ def export_config(conn: sqlite3.Connection) -> dict:
         "providers": providers,
         "model_aliases": get_aliases(conn),
         "model_prices": get_prices(conn),
+        "hidden_price_models": get_hidden_price_models(conn),
         "push_auth_secret": secret,
         "enforce_push_auth": enforce,
         "push_card_ttl_hours": get_push_card_ttl(conn),
@@ -573,12 +637,13 @@ def export_config(conn: sqlite3.Connection) -> dict:
 
 def parse_import_payload(
     payload: dict,
-) -> tuple[list[InstanceRow], dict[str, list[str]], dict, float, str, bool]:
+) -> tuple[list[InstanceRow], dict[str, list[str]], dict, list[str], float, str, bool]:
     """Validate an export-shaped payload wholesale.
 
     Every problem is collected before raising, so the caller can show all of
     them at once. Raises ImportValidationError; on success returns
-    (rows, aliases, prices, push_card_ttl, push_auth_secret, enforce_push_auth).
+    (rows, aliases, prices, hidden_price_models, push_card_ttl, push_auth_secret,
+    enforce_push_auth).
     """
     errors: dict[str, str] = {}
     if not isinstance(payload, dict):
@@ -625,6 +690,15 @@ def parse_import_payload(
     except ValueError as e:
         errors["_model_prices"] = str(e)
 
+    raw_hidden = payload.get("hidden_price_models", [])
+    if raw_hidden is None:
+        raw_hidden = []
+    hidden_price_models: list[str] = []
+    try:
+        hidden_price_models = validate_hidden_price_models(raw_hidden)
+    except ValueError as e:
+        errors["_hidden_price_models"] = str(e)
+
     ttl_raw = payload.get("push_card_ttl_hours", PUSH_CARD_TTL_DEFAULT)
     try:
         ttl = validate_push_card_ttl(ttl_raw)
@@ -636,7 +710,7 @@ def parse_import_payload(
 
     if errors:
         raise ImportValidationError(errors)
-    return rows, aliases, prices, ttl, secret, enforce
+    return rows, aliases, prices, hidden_price_models, ttl, secret, enforce
 
 
 def import_config(conn: sqlite3.Connection, payload: dict) -> None:
@@ -644,7 +718,7 @@ def import_config(conn: sqlite3.Connection, payload: dict) -> None:
 
     The admin password and active sessions are untouched.
     """
-    rows, aliases, prices, ttl, secret, enforce = parse_import_payload(payload)
+    rows, aliases, prices, hidden_price_models, ttl, secret, enforce = parse_import_payload(payload)
     now = datetime.now().astimezone().isoformat()
     conn.execute("DELETE FROM provider_instance")
     for row in rows:
@@ -661,6 +735,10 @@ def import_config(conn: sqlite3.Connection, payload: dict) -> None:
         )
     _write_aliases(conn, aliases)
     _write_prices(conn, prices)
+    priced_keys = {k.strip().lower() for k in prices}
+    _write_hidden_price_models(
+        conn, [m for m in hidden_price_models if m not in priced_keys]
+    )
     _set_setting(conn, PUSH_CARD_TTL_KEY, str(ttl))
     _set_setting(conn, "push_auth_secret", secret)
     _set_setting(conn, "enforce_push_auth", "1" if enforce else "0")

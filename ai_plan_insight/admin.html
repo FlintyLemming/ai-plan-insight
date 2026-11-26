@@ -95,6 +95,8 @@
     --ink-hover: #3a3930;
     --focus-ring: rgba(38, 37, 30, 0.08);
     --backdrop: rgba(38, 37, 30, 0.32);
+    --pill-track: var(--hairline-soft);
+    --pill-active: var(--surface-card);
     color-scheme: light;
     --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
@@ -132,6 +134,8 @@
     --error-line: #552a36;
     --focus-ring: rgba(239, 237, 230, 0.14);
     --backdrop: rgba(0, 0, 0, 0.6);
+    --pill-track: var(--canvas-soft);
+    --pill-active: var(--surface-strong);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -329,6 +333,8 @@
   }
   button.link:hover { text-decoration-color: var(--ink); }
   button.link[data-delete], button.link[data-alias-remove], button.link[data-price-clear] { color: var(--error); text-decoration-color: var(--error-line); }
+  button.link.subtle { color: var(--muted); text-decoration-color: var(--hairline-strong); }
+  button.link.subtle:hover { color: var(--ink); text-decoration-color: var(--ink); }
 
   /* ---- Forms ---- */
   label { display: block; font-size: 13px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
@@ -426,32 +432,39 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
-    padding: 32px 0 24px;
+    gap: 14px;
+    padding: 24px 0 18px;
   }
   h1 {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 400;
-    line-height: 1.1;
-    letter-spacing: -0.8px;
+    line-height: 1.15;
+    letter-spacing: -0.7px;
     color: var(--ink);
   }
   .page-lede {
-    margin-top: 10px;
+    margin-top: 8px;
     max-width: 40rem;
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.5;
     color: var(--body);
   }
+  .page-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
 
-  /* ---- Section nav + sections ---- */
+  /* ---- Section nav + collapsible section cards ---- */
   .admin-layout { display: block; }
   .section-nav {
     position: sticky;
     top: var(--nav-h);
     z-index: 20;
     height: var(--subnav-h);
-    margin: 0 calc(-1 * var(--gutter)) 8px;
+    margin: 0 calc(-1 * var(--gutter)) 12px;
     padding: 0 var(--gutter);
     display: flex;
     align-items: center;
@@ -468,6 +481,7 @@
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
+    gap: 6px;
     height: 30px;
     padding: 0 12px;
     border-radius: var(--rounded-pill);
@@ -479,40 +493,167 @@
   }
   .section-nav a:hover { color: var(--ink); }
   .section-nav a.active { background: var(--surface-strong); color: var(--ink); }
+  .nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: var(--rounded-pill);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    background: var(--hairline-soft);
+    color: var(--muted);
+  }
+  .nav-badge:empty { display: none; }
+  .nav-badge.is-warn {
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-line);
+    color: var(--warning);
+  }
+  .nav-badge.is-error {
+    background: var(--error-soft);
+    border: 1px solid var(--error-line);
+    color: var(--error);
+  }
   .admin-sections { min-width: 0; }
   .section {
-    padding-top: 32px;
-    scroll-margin-top: calc(var(--nav-h) + var(--subnav-h) + 8px);
+    scroll-margin-top: calc(var(--nav-h) + var(--subnav-h) + 12px);
   }
-  .section-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    gap: 12px 24px;
-    margin-bottom: 16px;
-  }
-  .section-head-text { min-width: 0; flex: 1 1 18rem; }
+  .section + .section { margin-top: 12px; }
   h2 {
-    font-size: 22px;
-    font-weight: 400;
-    line-height: 1.3;
-    letter-spacing: -0.11px;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
     color: var(--ink);
   }
   .section-desc {
-    margin-top: 6px;
-    max-width: 44rem;
-    font-size: 14px;
+    margin: 0;
+    max-width: 50rem;
+    font-size: 13px;
     line-height: 1.6;
     color: var(--body);
   }
-  .section-actions { display: flex; gap: 8px; align-items: center; }
   .panel {
     background: var(--surface-card);
     border: 1px solid var(--hairline);
     border-radius: var(--rounded-lg);
     overflow: hidden;
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface-card);
+    transition: background-color 0.12s ease;
+  }
+  .panel-head:hover { background: var(--canvas-soft); }
+  .section.is-open > .panel > .panel-head {
+    border-bottom: 1px solid var(--hairline);
+  }
+  .panel-toggle {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: auto;
+    padding: 14px 16px;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: inherit;
+    white-space: normal;
+  }
+  .panel-toggle:hover { border-color: transparent; }
+  .panel-toggle:active { background: transparent; }
+  .panel-chevron {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    transform: rotate(-90deg);
+    transition: transform 0.16s ease, color 0.12s ease;
+  }
+  .panel-toggle:hover .panel-chevron { color: var(--ink); }
+  .section.is-open > .panel > .panel-head .panel-chevron { transform: rotate(0deg); }
+  .panel-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .panel-title-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .panel-summary {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: var(--rounded-pill);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    background: var(--hairline-soft);
+    color: var(--body);
+  }
+  .summary-pill.warn {
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-line);
+    color: var(--warning);
+  }
+  .summary-pill.error {
+    background: var(--error-soft);
+    border: 1px solid var(--error-line);
+    color: var(--error);
+  }
+  .dirty-dot {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: var(--rounded-pill);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-line);
+    color: var(--warning);
+  }
+  .panel-head-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-right: 16px;
+  }
+  .panel-head-actions button { height: 32px; padding: 0 12px; font-size: 13px; }
+  .panel-intro {
+    padding: 12px 16px;
+    background: var(--canvas-soft);
+    border-bottom: 1px solid var(--hairline-soft);
   }
   .panel-body { padding: 20px 16px; }
   .panel-empty { padding: 20px 16px; }
@@ -541,6 +682,91 @@
     color: var(--muted);
     font-size: 14px;
   }
+
+  /* ---- Model prices toolbar & filter pills ---- */
+  .price-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--hairline-soft);
+    background: var(--surface-card);
+  }
+  .range-pill-group {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: var(--pill-track);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+  }
+  .range-pill-group::-webkit-scrollbar { display: none; }
+  .range-pill {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--body);
+    border-radius: var(--rounded-sm);
+    height: 30px;
+    padding: 0 11px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .range-pill:hover { color: var(--ink); border-color: transparent; }
+  .range-pill:active { background: transparent; }
+  .range-pill.active {
+    border-color: var(--hairline);
+    background: var(--pill-active);
+    color: var(--ink);
+  }
+  .pill-count {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .range-pill.active .pill-count { color: var(--body); }
+  .price-search-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .price-search {
+    height: 36px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+  }
+  .price-search::placeholder { font-family: var(--font-sans); }
+  .prices-more-bar {
+    display: flex;
+    justify-content: center;
+    padding: 8px 16px;
+    border-top: 1px solid var(--hairline-soft);
+    background: var(--canvas-soft);
+  }
+  .prices-more-btn {
+    height: 30px;
+    padding: 0 12px;
+    font-size: 13px;
+    color: var(--body);
+    background: transparent;
+    border-color: transparent;
+  }
+  .prices-more-btn:hover { color: var(--ink); background: var(--surface-card); border-color: var(--hairline-strong); }
+  tr.row-hidden td { color: var(--muted); }
+  tr.row-hidden td.mono { color: var(--muted); }
+  tr.row-dirty td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+  .pending-clear-note { font-size: 12px; color: var(--muted); margin-right: 4px; }
 
   /* ---- Tables ---- */
   .table-scroll { overflow-x: auto; }
@@ -649,14 +875,26 @@
       flex-direction: row;
       align-items: flex-end;
       justify-content: space-between;
-      gap: 32px;
-      padding: 56px 0 32px;
+      gap: 24px;
+      padding: 36px 0 24px;
     }
-    h1 { font-size: 44px; letter-spacing: -1.3px; }
-    .page-lede { font-size: 16px; margin-top: 14px; }
+    h1 { font-size: 36px; letter-spacing: -1px; }
+    .page-lede { font-size: 15px; margin-top: 10px; }
+    .panel-toggle { padding: 16px 24px; }
+    .panel-heading {
+      flex-direction: row;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 14px;
+    }
+    .panel-head-actions { padding-right: 24px; }
+    .panel-intro { padding: 14px 24px; }
     .panel-body { padding: 24px; }
     .panel-empty { padding: 20px 24px; }
     .panel-foot { padding: 12px 24px; }
+    .price-toolbar { padding: 12px 24px; flex-wrap: nowrap; }
+    .price-search-wrap { flex: 0 1 230px; }
+    .prices-more-bar { padding: 8px 24px; }
     th:first-child, td:first-child { padding-left: 24px; }
     th:last-child, td:last-child { padding-right: 24px; }
     .panel-split { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
@@ -667,14 +905,14 @@
     :root { --subnav-h: 0px; }
     .admin-layout {
       display: grid;
-      grid-template-columns: 184px minmax(0, 1fr);
-      gap: 56px;
+      grid-template-columns: 196px minmax(0, 1fr);
+      gap: 44px;
       align-items: start;
     }
     .section-nav {
-      top: calc(var(--nav-h) + 32px);
+      top: calc(var(--nav-h) + 24px);
       height: auto;
-      margin: 32px 0 0;
+      margin: 8px 0 0;
       padding: 0;
       display: flex;
       flex-direction: column;
@@ -696,8 +934,9 @@
     }
     .section-nav a { height: 34px; padding: 0 10px; border-radius: var(--rounded-md); font-size: 14px; }
     .section-nav a.active { background: var(--surface-card); box-shadow: inset 0 0 0 1px var(--hairline); }
-    .section { padding-top: 32px; scroll-margin-top: calc(var(--nav-h) + 16px); }
-    .section + .section { padding-top: 48px; }
+    .section-nav .nav-badge { margin-left: auto; }
+    .section { scroll-margin-top: calc(var(--nav-h) + 16px); }
+    .section + .section { margin-top: 14px; }
   }
 </style>
 </head>
@@ -750,232 +989,318 @@
         <h1>管理</h1>
         <p class="page-lede">配置看板的数据来源与显示方式。所有配置保存在 SQLite 数据库 <code>usage.db</code> 中。</p>
       </div>
-      <button id="logout-btn">退出登录</button>
+      <div class="page-head-actions">
+        <button id="toggle-all-sections-btn" type="button">全部展开</button>
+        <button id="logout-btn" type="button">退出登录</button>
+      </div>
     </div>
 
     <div class="admin-layout">
       <nav class="section-nav" id="section-nav" aria-label="设置分区">
         <div class="section-nav-group">
           <div class="section-nav-label">数据源</div>
-          <a href="#instances-panel">订阅实例</a>
+          <a href="#instances-panel"><span>订阅实例</span><span class="nav-badge" id="nav-badge-instances"></span></a>
         </div>
         <div class="section-nav-group">
           <div class="section-nav-label">模型</div>
-          <a href="#aliases-panel">模型别名</a>
-          <a href="#prices-panel">模型价格</a>
+          <a href="#aliases-panel"><span>模型别名</span><span class="nav-badge" id="nav-badge-aliases"></span></a>
+          <a href="#prices-panel"><span>模型价格</span><span class="nav-badge" id="nav-badge-prices"></span></a>
         </div>
         <div class="section-nav-group">
           <div class="section-nav-label">系统</div>
-          <a href="#push-auth-panel">推送认证</a>
-          <a href="#display-settings-panel">显示设置</a>
-          <a href="#password-panel">管理密码</a>
-          <a href="#io-panel">导入导出</a>
+          <a href="#push-auth-panel"><span>推送认证</span></a>
+          <a href="#display-settings-panel"><span>显示设置</span></a>
+          <a href="#password-panel"><span>管理密码</span></a>
+          <a href="#io-panel"><span>导入导出</span></a>
         </div>
       </nav>
 
       <div class="admin-sections">
-        <section class="section" id="instances-panel">
-          <div class="section-head">
-            <div class="section-head-text">
-              <h2>订阅实例</h2>
-              <p class="section-desc">每个实例对应看板上的一张卡片。fetch 模式由面板主动拉取，push 模式等待本地 Agent 推送。</p>
-            </div>
-            <div class="section-actions">
-              <button class="primary cta" id="new-instance-btn">新建实例</button>
-            </div>
-          </div>
+        <section class="section is-open" id="instances-panel" data-section="instances-panel">
           <div class="panel">
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>标签</th><th>类型</th><th>模式</th><th>排序</th><th>状态</th><th>操作</th>
-                  </tr>
-                </thead>
-                <tbody id="instances-body"></tbody>
-              </table>
-            </div>
-            <p class="muted panel-empty" id="instances-empty" style="display:none;">
-              还没有实例，点「新建实例」添加一个。
-            </p>
-          </div>
-        </section>
-
-        <section class="section" id="aliases-panel">
-          <div class="section-head">
-            <div class="section-head-text">
-              <h2>模型别名</h2>
-              <p class="section-desc">把不同来源上报的原始模型 ID 归并到同一个展示名；未配置的 ID 原样展示。</p>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-body">
-              <div id="aliases-rows"></div>
-              <button id="alias-add-btn" style="margin-top:4px;">添加一组</button>
-            </div>
-            <div class="panel-foot">
-              <span id="alias-status" class="muted status"></span>
-              <div class="actions">
-                <button class="primary" id="alias-save-btn">保存别名</button>
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="true" aria-controls="instances-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row"><h2>订阅实例</h2></span>
+                  <span class="panel-summary" id="summary-instances">加载中…</span>
+                </span>
+              </button>
+              <div class="panel-head-actions">
+                <button class="primary cta" id="new-instance-btn" type="button">新建实例</button>
               </div>
             </div>
-          </div>
-        </section>
-
-        <section class="section" id="prices-panel">
-          <div class="section-head">
-            <div class="section-head-text">
-              <h2>模型价格</h2>
-              <p class="section-desc">
-                成本按每个原始模型 ID 的单价计算，价格自动从 LiteLLM / OpenRouter / models.dev 获取；
-                这里只列出这三个源都查不到价的模型，填了才会计入成本。
-                单位 <strong>USD / 百万 Token</strong>，照抄各家定价页即可。
+            <div class="panel-collapse" id="instances-content">
+              <div class="panel-intro">
+                <p class="section-desc">每个实例对应看板上的一张卡片。fetch 模式由面板主动拉取，push 模式等待本地 Agent 推送。</p>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>标签</th><th>类型</th><th>模式</th><th>排序</th><th>状态</th><th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="instances-body"></tbody>
+                </table>
+              </div>
+              <p class="muted panel-empty" id="instances-empty" style="display:none;">
+                还没有实例，点「新建实例」添加一个。
               </p>
             </div>
           </div>
-          <div class="panel">
-            <div class="table-scroll">
-              <table id="prices-table">
-                <thead>
-                  <tr>
-                    <th>模型 ID</th><th>近 90 天 Token</th><th>输入</th><th>输出</th>
-                    <th>缓存读取</th><th>缓存写入</th><th>操作</th>
-                  </tr>
-                </thead>
-                <tbody id="prices-body"></tbody>
-              </table>
-            </div>
-            <p class="muted panel-empty" id="prices-empty" style="display:none;">
-              近 90 天内没有缺少价格的模型。
-            </p>
-            <p class="muted panel-empty" id="prices-not-ready" style="display:none;">
-              价格数据尚未就绪，请稍后刷新。
-            </p>
-            <div class="panel-foot">
-              <span id="price-status" class="muted status"></span>
-              <div class="actions">
-                <button class="primary" id="price-save-btn">保存价格</button>
-              </div>
-            </div>
-          </div>
         </section>
 
-        <section class="section" id="push-auth-panel">
-          <div class="section-head">
-            <div class="section-head-text">
-              <h2>推送认证</h2>
-              <p class="section-desc">
-                <code>POST /api/push/v2/{instance_id}</code> 与 <code>POST /api/usage/report</code>
-                共用这一个 token。
-              </p>
-            </div>
-          </div>
+        <section class="section" id="aliases-panel" data-section="aliases-panel">
           <div class="panel">
-            <div class="panel-body">
-              <div class="field">
-                <label for="push-secret">push_auth_secret</label>
-                <div class="input-row">
-                  <input id="push-secret" data-masked="1" class="mono">
-                  <button class="link" id="push-secret-reveal-btn">显示</button>
-                  <button class="link" id="push-secret-generate-btn">生成随机值</button>
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="false" aria-controls="aliases-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row">
+                    <h2>模型别名</h2>
+                    <span class="dirty-dot" id="dirty-aliases" hidden>未保存</span>
+                  </span>
+                  <span class="panel-summary" id="summary-aliases">加载中…</span>
+                </span>
+              </button>
+            </div>
+            <div class="panel-collapse" id="aliases-content" hidden>
+              <div class="panel-intro">
+                <p class="section-desc">把不同来源上报的原始模型 ID 归并到同一个展示名；未配置的 ID 原样展示。</p>
+              </div>
+              <div class="panel-body">
+                <div id="aliases-rows"></div>
+                <button id="alias-add-btn" type="button" style="margin-top:4px;">添加一组</button>
+              </div>
+              <div class="panel-foot">
+                <span id="alias-status" class="muted status"></span>
+                <div class="actions">
+                  <button class="primary" id="alias-save-btn" type="button">保存别名</button>
                 </div>
               </div>
-              <div class="field">
-                <label class="check-label">
-                  <input id="enforce-push-auth" type="checkbox">
-                  <span>强制校验（enforce_push_auth）：关闭时 token 错误只记日志，开启后直接 401</span>
-                </label>
-              </div>
-            </div>
-            <div class="panel-foot">
-              <span id="push-auth-status" class="muted status"></span>
-              <div class="actions">
-                <button class="primary" id="push-auth-save-btn">保存推送认证</button>
-              </div>
             </div>
           </div>
         </section>
 
-        <section class="section" id="display-settings-panel">
-          <div class="section-head">
-            <div class="section-head-text">
-              <h2>显示设置</h2>
-              <p class="section-desc">
-                push 模式的订阅卡片在最后一次推送后超过该时长会从面板隐藏；fetch 模式卡片不受影响（始终展示）。单位为<b>小时</b>，允许小数，最小 <code>0.5</code>（30 分钟）。
+        <section class="section" id="prices-panel" data-section="prices-panel">
+          <div class="panel">
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="false" aria-controls="prices-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row">
+                    <h2>模型价格</h2>
+                    <span class="dirty-dot" id="dirty-prices" hidden>未保存</span>
+                  </span>
+                  <span class="panel-summary" id="summary-prices">加载中…</span>
+                </span>
+              </button>
+            </div>
+            <div class="panel-collapse" id="prices-content" hidden>
+              <div class="panel-intro">
+                <p class="section-desc">
+                  成本按每个原始模型 ID 的单价计算，价格自动从 LiteLLM / OpenRouter / models.dev 获取；
+                  这里只列出这三个源都查不到价的模型，填了才会计入成本。
+                  单位 <strong>USD / 百万 Token</strong>，照抄各家定价页即可；不打算计价的模型可点「隐藏」移出待补价列表（不影响用量统计，也不会写入 0 价格）。
+                </p>
+              </div>
+              <div class="price-toolbar" id="price-toolbar" style="display:none;">
+                <div class="range-pill-group" role="tablist" aria-label="模型价格筛选">
+                  <button type="button" class="range-pill active" role="tab" aria-selected="true" data-price-filter="pending">待补价 <span class="pill-count" data-filter-count="pending">0</span></button>
+                  <button type="button" class="range-pill" role="tab" aria-selected="false" data-price-filter="configured">已配置 <span class="pill-count" data-filter-count="configured">0</span></button>
+                  <button type="button" class="range-pill" role="tab" aria-selected="false" data-price-filter="all">全部 <span class="pill-count" data-filter-count="all">0</span></button>
+                  <button type="button" class="range-pill" role="tab" aria-selected="false" data-price-filter="hidden">已隐藏 <span class="pill-count" data-filter-count="hidden">0</span></button>
+                </div>
+                <div class="price-search-wrap">
+                  <input type="search" id="price-search" class="price-search" placeholder="搜索模型 ID…" aria-label="搜索模型 ID">
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table id="prices-table">
+                  <thead>
+                    <tr>
+                      <th>模型 ID</th><th>近 90 天 Token</th><th>输入</th><th>输出</th>
+                      <th>缓存读取</th><th>缓存写入</th><th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="prices-body"></tbody>
+                </table>
+              </div>
+              <div class="prices-more-bar" id="prices-more-bar" style="display:none;">
+                <button type="button" class="prices-more-btn" id="prices-more-btn"></button>
+              </div>
+              <p class="muted panel-empty" id="prices-filter-empty" style="display:none;"></p>
+              <p class="muted panel-empty" id="prices-empty" style="display:none;">
+                近 90 天内没有缺少价格的模型。
               </p>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-body">
-              <div class="field" style="max-width:20rem;">
-                <label for="push-card-ttl">推送卡片最长显示时长（小时）</label>
-                <input id="push-card-ttl" type="number" min="0.5" step="any">
-              </div>
-            </div>
-            <div class="panel-foot">
-              <span id="display-settings-status" class="muted status"></span>
-              <div class="actions">
-                <button class="primary" id="display-settings-save-btn">保存显示设置</button>
+              <p class="muted panel-empty" id="prices-not-ready" style="display:none;">
+                价格数据尚未就绪，请稍后刷新。
+              </p>
+              <div class="panel-foot">
+                <span id="price-status" class="muted status"></span>
+                <div class="actions">
+                  <button class="primary" id="price-save-btn" type="button">保存价格</button>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="section" id="password-panel">
-          <div class="section-head">
-            <div class="section-head-text">
-              <h2>管理密码</h2>
-              <p class="section-desc">至少 8 位。修改成功后其他设备的登录会全部失效。</p>
-            </div>
-          </div>
+        <section class="section" id="push-auth-panel" data-section="push-auth-panel">
           <div class="panel">
-            <div class="panel-body">
-              <div class="field" style="max-width:24rem;">
-                <label for="pwd-old">原密码</label>
-                <input id="pwd-old" type="password" autocomplete="current-password">
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="false" aria-controls="push-auth-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row">
+                    <h2>推送认证</h2>
+                    <span class="dirty-dot" id="dirty-push-auth" hidden>未保存</span>
+                  </span>
+                  <span class="panel-summary" id="summary-push-auth">加载中…</span>
+                </span>
+              </button>
+            </div>
+            <div class="panel-collapse" id="push-auth-content" hidden>
+              <div class="panel-intro">
+                <p class="section-desc">
+                  <code>POST /api/push/v2/{instance_id}</code> 与 <code>POST /api/usage/report</code>
+                  共用这一个 token。
+                </p>
               </div>
-              <div class="panel-split">
+              <div class="panel-body">
                 <div class="field">
-                  <label for="pwd-new">新密码</label>
-                  <input id="pwd-new" type="password" autocomplete="new-password">
+                  <label for="push-secret">push_auth_secret</label>
+                  <div class="input-row">
+                    <input id="push-secret" data-masked="1" class="mono">
+                    <button class="link" id="push-secret-reveal-btn" type="button">显示</button>
+                    <button class="link" id="push-secret-generate-btn" type="button">生成随机值</button>
+                  </div>
                 </div>
                 <div class="field">
-                  <label for="pwd-confirm">确认新密码</label>
-                  <input id="pwd-confirm" type="password" autocomplete="new-password">
+                  <label class="check-label">
+                    <input id="enforce-push-auth" type="checkbox">
+                    <span>强制校验（enforce_push_auth）：关闭时 token 错误只记日志，开启后直接 401</span>
+                  </label>
                 </div>
               </div>
-            </div>
-            <div class="panel-foot">
-              <span id="pwd-status" class="muted status"></span>
-              <div class="actions">
-                <button class="danger" id="logout-all-btn">退出所有设备</button>
-                <button class="primary" id="pwd-save-btn">修改密码</button>
+              <div class="panel-foot">
+                <span id="push-auth-status" class="muted status"></span>
+                <div class="actions">
+                  <button class="primary" id="push-auth-save-btn" type="button">保存推送认证</button>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="section" id="io-panel">
-          <div class="section-head">
-            <div class="section-head-text">
-              <h2>导入导出</h2>
-              <p class="section-desc">导出的 JSON 含明文凭据，请妥善保管；它不包含管理密码。</p>
-            </div>
-            <div class="section-actions">
-              <button id="export-btn">导出配置</button>
-            </div>
-          </div>
+        <section class="section" id="display-settings-panel" data-section="display-settings-panel">
           <div class="panel">
-            <div class="panel-body">
-              <div class="field">
-                <label for="import-text">粘贴配置 JSON</label>
-                <textarea id="import-text" placeholder='{"providers": {...}}'></textarea>
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="false" aria-controls="display-settings-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row">
+                    <h2>显示设置</h2>
+                    <span class="dirty-dot" id="dirty-display-settings" hidden>未保存</span>
+                  </span>
+                  <span class="panel-summary" id="summary-display-settings">加载中…</span>
+                </span>
+              </button>
+            </div>
+            <div class="panel-collapse" id="display-settings-content" hidden>
+              <div class="panel-intro">
+                <p class="section-desc">
+                  push 模式的订阅卡片在最后一次推送后超过该时长会从面板隐藏；fetch 模式卡片不受影响（始终展示）。单位为<b>小时</b>，允许小数，最小 <code>0.5</code>（30 分钟）。
+                </p>
+              </div>
+              <div class="panel-body">
+                <div class="field" style="max-width:20rem;">
+                  <label for="push-card-ttl">推送卡片最长显示时长（小时）</label>
+                  <input id="push-card-ttl" type="number" min="0.5" step="any">
+                </div>
+              </div>
+              <div class="panel-foot">
+                <span id="display-settings-status" class="muted status"></span>
+                <div class="actions">
+                  <button class="primary" id="display-settings-save-btn" type="button">保存显示设置</button>
+                </div>
               </div>
             </div>
-            <div class="panel-foot">
-              <span id="io-status" class="muted status"></span>
-              <div class="actions">
-                <button class="danger" id="import-btn">导入（将覆盖现有全部配置）</button>
+          </div>
+        </section>
+
+        <section class="section" id="password-panel" data-section="password-panel">
+          <div class="panel">
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="false" aria-controls="password-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row"><h2>管理密码</h2></span>
+                  <span class="panel-summary" id="summary-password">修改登录密码或注销全部设备</span>
+                </span>
+              </button>
+            </div>
+            <div class="panel-collapse" id="password-content" hidden>
+              <div class="panel-intro">
+                <p class="section-desc">至少 8 位。修改成功后其他设备的登录会全部失效。</p>
+              </div>
+              <div class="panel-body">
+                <div class="field" style="max-width:24rem;">
+                  <label for="pwd-old">原密码</label>
+                  <input id="pwd-old" type="password" autocomplete="current-password">
+                </div>
+                <div class="panel-split">
+                  <div class="field">
+                    <label for="pwd-new">新密码</label>
+                    <input id="pwd-new" type="password" autocomplete="new-password">
+                  </div>
+                  <div class="field">
+                    <label for="pwd-confirm">确认新密码</label>
+                    <input id="pwd-confirm" type="password" autocomplete="new-password">
+                  </div>
+                </div>
+              </div>
+              <div class="panel-foot">
+                <span id="pwd-status" class="muted status"></span>
+                <div class="actions">
+                  <button class="danger" id="logout-all-btn" type="button">退出所有设备</button>
+                  <button class="primary" id="pwd-save-btn" type="button">修改密码</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="io-panel" data-section="io-panel">
+          <div class="panel">
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="false" aria-controls="io-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row"><h2>导入导出</h2></span>
+                  <span class="panel-summary" id="summary-io">导出备份或粘贴 JSON 覆盖配置</span>
+                </span>
+              </button>
+              <div class="panel-head-actions">
+                <button id="export-btn" type="button">导出配置</button>
+              </div>
+            </div>
+            <div class="panel-collapse" id="io-content" hidden>
+              <div class="panel-intro">
+                <p class="section-desc">导出的 JSON 含明文凭据，请妥善保管；它不包含管理密码。</p>
+              </div>
+              <div class="panel-body">
+                <div class="field">
+                  <label for="import-text">粘贴配置 JSON</label>
+                  <textarea id="import-text" placeholder='{"providers": {...}}'></textarea>
+                </div>
+              </div>
+              <div class="panel-foot">
+                <span id="io-status" class="muted status"></span>
+                <div class="actions">
+                  <button class="danger" id="import-btn" type="button">导入（将覆盖现有全部配置）</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1134,8 +1459,11 @@ async function boot() {
   if (session.authenticated) {
     loginView.style.display = 'none';
     adminView.style.display = 'block';
+    initCollapsibleSections();
     await loadProviderTypes();
     await loadAllSections();
+    openHashSection(false);
+    updateSectionNav();
     return;
   }
   adminView.style.display = 'none';
@@ -1185,6 +1513,40 @@ async function loadInstances() {
   INSTANCES = data.instances;
   INSTANCE_ERRORS = data.errors || {};
   renderInstances();
+  updateInstancesSummary();
+}
+
+function updateInstancesSummary() {
+  const summary = document.getElementById('summary-instances');
+  const badge = document.getElementById('nav-badge-instances');
+  const total = INSTANCES.length;
+  const enabled = INSTANCES.filter(i => i.enabled).length;
+  const disabled = total - enabled;
+  const errCount = Object.keys(INSTANCE_ERRORS).length;
+  if (summary) {
+    if (!total) {
+      summary.textContent = '暂无实例';
+    } else {
+      const parts = [`${enabled} 个启用`];
+      if (disabled) parts.push(`${disabled} 个停用`);
+      summary.innerHTML = esc(parts.join(' · '))
+        + (errCount ? ` <span class="summary-pill error">${errCount} 个异常</span>` : '');
+    }
+  }
+  if (badge) {
+    badge.className = 'nav-badge';
+    if (errCount > 0) {
+      badge.classList.add('is-error');
+      badge.textContent = `${errCount}`;
+      badge.title = `${errCount} 个实例配置异常`;
+    } else if (total > 0) {
+      badge.textContent = `${total}`;
+      badge.title = `共 ${total} 个实例`;
+    } else {
+      badge.textContent = '';
+      badge.title = '';
+    }
+  }
 }
 
 function renderInstances() {
@@ -1378,6 +1740,7 @@ async function saveInstance() {
     return;
   }
   closeInstanceModal();
+  setSectionOpen('instances-panel', true);
   await loadInstances();
 }
 
@@ -1438,10 +1801,12 @@ document.getElementById('modal-mode').addEventListener('change', renderCredentia
 // ── model aliases ──────────────────────────────────────────
 
 let ALIASES = {};
+let ALIASES_SAVED_JSON = '{}';
 
 async function loadAliases() {
   const data = await api('/api/admin/aliases');
   ALIASES = data.model_aliases || {};
+  ALIASES_SAVED_JSON = JSON.stringify(ALIASES);
   renderAliases();
 }
 
@@ -1453,7 +1818,7 @@ function renderAliases() {
       <input data-alias-label="${i}" value="${esc(label)}" placeholder="展示名">
       <input data-alias-ids="${i}" value="${esc(rawIds.join(', '))}"
              placeholder="原始 ID，用逗号分隔">
-      <button class="link" data-alias-remove="${i}">删除</button>
+      <button class="link" type="button" data-alias-remove="${i}">删除</button>
     </div>`).join('');
   box.querySelectorAll('[data-alias-remove]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1462,6 +1827,10 @@ function renderAliases() {
       renderAliases();
     });
   });
+  box.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', updateAliasesSummary);
+  });
+  updateAliasesSummary();
 }
 
 function collectAliases() {
@@ -1474,6 +1843,21 @@ function collectAliases() {
     out[label] = raw.split(',').map(s => s.trim()).filter(Boolean);
   });
   return out;
+}
+
+function updateAliasesSummary() {
+  const current = collectAliases();
+  const entries = Object.entries(current);
+  const groups = entries.length;
+  const rawCount = entries.reduce((sum, [, ids]) => sum + ids.length, 0);
+  const summary = document.getElementById('summary-aliases');
+  if (summary) {
+    summary.textContent = groups ? `${groups} 组别名 · ${rawCount} 个原始 ID` : '未配置';
+  }
+  const badge = document.getElementById('nav-badge-aliases');
+  if (badge) badge.textContent = groups ? `${groups}` : '';
+  const dirty = document.getElementById('dirty-aliases');
+  if (dirty) dirty.hidden = JSON.stringify(current) === ALIASES_SAVED_JSON;
 }
 
 async function saveAliases() {
@@ -1497,22 +1881,162 @@ async function saveAliases() {
 // ── model prices ───────────────────────────────────────────
 
 const PRICE_FIELDS = ['input', 'output', 'cache_read', 'cache_write'];
+const PRICE_PAGE_SIZE = 8;
+
+let PRICE_ROWS = [];
+let PRICE_READY = false;
+let PRICE_DRAFT = {};
+let PRICE_HIDDEN = new Set();
+let PRICE_FILTER = 'pending';
+let PRICE_FILTER_USER_SET = false;
+let PRICE_SEARCH = '';
+let PRICE_EXPANDED = false;
+
+function priceKey(modelId) {
+  return String(modelId || '').trim().toLowerCase();
+}
+
+function emptyDraftRow() {
+  return { input: '', output: '', cache_read: '', cache_write: '' };
+}
+
+function draftFromPrice(price) {
+  if (!price) return emptyDraftRow();
+  const row = {};
+  PRICE_FIELDS.forEach(f => {
+    row[f] = price[f] === null || price[f] === undefined ? '' : String(price[f]);
+  });
+  return row;
+}
+
+function draftHasValue(draft) {
+  if (!draft) return false;
+  return PRICE_FIELDS.some(f => String(draft[f] || '').trim() !== '');
+}
+
+function isPriceRowDirty(m) {
+  const key = priceKey(m.model_id);
+  const draft = PRICE_DRAFT[key] || emptyDraftRow();
+  const hasDraft = draftHasValue(draft);
+  if (!m.price) return !PRICE_HIDDEN.has(key) && hasDraft;
+  if (!hasDraft) return true; // user cleared an existing override
+  return PRICE_FIELDS.some(f => {
+    const raw = String(draft[f] || '').trim();
+    const expected = Number(m.price[f] || 0);
+    const actual = raw === '' ? 0 : Number(raw);
+    return actual !== expected;
+  });
+}
+
+function getPriceCounts() {
+  let pending = 0;
+  let configured = 0;
+  let hidden = 0;
+  PRICE_ROWS.forEach(m => {
+    const key = priceKey(m.model_id);
+    if (m.price) configured += 1;
+    else if (PRICE_HIDDEN.has(key)) hidden += 1;
+    else pending += 1;
+  });
+  return { pending, configured, hidden, all: pending + configured };
+}
+
+function rowMatchesFilter(m, filter) {
+  const key = priceKey(m.model_id);
+  const isHidden = !m.price && PRICE_HIDDEN.has(key);
+  if (filter === 'pending') return !m.price && !isHidden;
+  if (filter === 'configured') return !!m.price;
+  if (filter === 'hidden') return isHidden;
+  return !isHidden; // 'all' shows all non-hidden models (pending + configured)
+}
+
+function updatePricesSummary() {
+  const summary = document.getElementById('summary-prices');
+  const badge = document.getElementById('nav-badge-prices');
+  const dirtyEl = document.getElementById('dirty-prices');
+
+  if (!PRICE_READY) {
+    if (summary) summary.textContent = '价格数据尚未就绪';
+    if (badge) { badge.className = 'nav-badge'; badge.textContent = ''; }
+    if (dirtyEl) dirtyEl.hidden = true;
+    return;
+  }
+
+  const counts = getPriceCounts();
+  if (summary) {
+    if (!PRICE_ROWS.length) {
+      summary.textContent = '无缺失价格';
+    } else {
+      const parts = [];
+      if (counts.pending > 0) {
+        parts.push(`<span class="summary-pill warn">${counts.pending} 个待补价</span>`);
+      } else {
+        parts.push('无待补价');
+      }
+      if (counts.configured > 0) parts.push(`${counts.configured} 个已配置`);
+      if (counts.hidden > 0) parts.push(`${counts.hidden} 个已隐藏`);
+      summary.innerHTML = parts.join(' · ');
+    }
+  }
+  if (badge) {
+    badge.className = 'nav-badge';
+    if (counts.pending > 0) {
+      badge.classList.add('is-warn');
+      badge.textContent = `${counts.pending}`;
+      badge.title = `${counts.pending} 个模型待补价`;
+    } else {
+      badge.textContent = '';
+      badge.title = '';
+    }
+  }
+  if (dirtyEl) dirtyEl.hidden = !PRICE_ROWS.some(isPriceRowDirty);
+}
 
 async function loadPrices() {
   const data = await api('/api/admin/model-prices');
+  PRICE_READY = !!data.pricing_ready;
+  PRICE_ROWS = PRICE_READY ? (data.models || []) : [];
+  PRICE_DRAFT = {};
+  PRICE_HIDDEN = new Set();
+  PRICE_ROWS.forEach(m => {
+    const key = priceKey(m.model_id);
+    PRICE_DRAFT[key] = draftFromPrice(m.price);
+    if (m.hidden && !m.price) PRICE_HIDDEN.add(key);
+  });
+
+  if (PRICE_READY && !PRICE_FILTER_USER_SET) {
+    const counts = getPriceCounts();
+    if (counts.pending > 0) PRICE_FILTER = 'pending';
+    else if (counts.configured > 0) PRICE_FILTER = 'configured';
+    else if (counts.hidden > 0) PRICE_FILTER = 'hidden';
+    else PRICE_FILTER = 'pending';
+  }
+  document.getElementById('price-status').textContent = '';
+  renderPrices();
+}
+
+function renderPrices() {
+  const toolbar = document.getElementById('price-toolbar');
   const table = document.getElementById('prices-table');
   const body = document.getElementById('prices-body');
   const empty = document.getElementById('prices-empty');
+  const filterEmpty = document.getElementById('prices-filter-empty');
   const notReady = document.getElementById('prices-not-ready');
+  const moreBar = document.getElementById('prices-more-bar');
+  const moreBtn = document.getElementById('prices-more-btn');
   const saveBtn = document.getElementById('price-save-btn');
-  document.getElementById('price-status').textContent = '';
 
-  if (!data.pricing_ready) {
+  updatePricesSummary();
+
+  if (!PRICE_READY) {
     // "no upstream price" is true for everything before the data loads, so
     // the list would be meaningless — show nothing rather than garbage.
     body.innerHTML = '';
+    toolbar.style.display = 'none';
     table.style.display = 'none';
+    moreBar.style.display = 'none';
     empty.style.display = 'none';
+    filterEmpty.style.display = 'none';
     notReady.style.display = 'block';
     saveBtn.disabled = true;
     return;
@@ -1520,38 +2044,232 @@ async function loadPrices() {
   notReady.style.display = 'none';
   saveBtn.disabled = false;
 
-  const models = data.models || [];
-  table.style.display = models.length ? 'table' : 'none';
-  empty.style.display = models.length ? 'none' : 'block';
-  body.innerHTML = models.map(m => `
-    <tr data-price-row="${esc(m.model_id)}">
+  if (!PRICE_ROWS.length) {
+    body.innerHTML = '';
+    toolbar.style.display = 'none';
+    table.style.display = 'none';
+    moreBar.style.display = 'none';
+    filterEmpty.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  toolbar.style.display = 'flex';
+
+  const counts = getPriceCounts();
+  toolbar.querySelectorAll('[data-price-filter]').forEach(btn => {
+    const f = btn.dataset.priceFilter;
+    const active = f === PRICE_FILTER;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    const countEl = btn.querySelector('[data-filter-count]');
+    if (countEl) countEl.textContent = String(counts[f] || 0);
+  });
+
+  const query = PRICE_SEARCH.trim().toLowerCase();
+  const filtered = PRICE_ROWS.filter(m => {
+    if (!rowMatchesFilter(m, PRICE_FILTER)) return false;
+    if (query && !m.model_id.toLowerCase().includes(query)) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    body.innerHTML = '';
+    table.style.display = 'none';
+    moreBar.style.display = 'none';
+    filterEmpty.style.display = 'block';
+    if (query) {
+      const hiddenMatches = PRICE_FILTER === 'hidden'
+        ? 0
+        : PRICE_ROWS.filter(m => rowMatchesFilter(m, 'hidden') && m.model_id.toLowerCase().includes(query)).length;
+      filterEmpty.innerHTML = `没有匹配「${esc(PRICE_SEARCH.trim())}」的模型。`
+        + (hiddenMatches
+          ? ` <button type="button" class="link" id="price-jump-hidden-btn">已隐藏中有 ${hiddenMatches} 个匹配，点击查看</button>`
+          : '');
+      const jumpBtn = document.getElementById('price-jump-hidden-btn');
+      if (jumpBtn) {
+        jumpBtn.addEventListener('click', () => {
+          PRICE_FILTER = 'hidden';
+          PRICE_FILTER_USER_SET = true;
+          PRICE_EXPANDED = false;
+          renderPrices();
+        });
+      }
+    } else if (PRICE_FILTER === 'pending') {
+      filterEmpty.textContent = counts.configured || counts.hidden
+        ? '当前没有待补价模型，可切换到「已配置」或「已隐藏」查看。'
+        : '近 90 天内没有缺少价格的模型。';
+    } else if (PRICE_FILTER === 'configured') {
+      filterEmpty.textContent = '还没有手动配置过价格的模型。';
+    } else if (PRICE_FILTER === 'hidden') {
+      filterEmpty.textContent = '没有已隐藏的模型。';
+    } else {
+      filterEmpty.textContent = '所有模型均已隐藏，可在「已隐藏」中查看或恢复。';
+    }
+    return;
+  }
+
+  filterEmpty.style.display = 'none';
+  table.style.display = 'table';
+
+  const shouldTruncate = !query && filtered.length > PRICE_PAGE_SIZE;
+  const visible = (shouldTruncate && !PRICE_EXPANDED)
+    ? filtered.slice(0, PRICE_PAGE_SIZE)
+    : filtered;
+
+  function buildPriceRowActions(m, isHidden, hasDraft) {
+    const clearingSaved = !!m.price && !hasDraft;
+    if (isHidden) {
+      return `<button type="button" class="link" data-price-unhide="${esc(m.model_id)}">取消隐藏</button>`;
+    }
+    if (m.price) {
+      return clearingSaved
+        ? `<span class="pending-clear-note">待保存移除</span><button type="button" class="link" data-price-restore="${esc(m.model_id)}">撤销</button>`
+        : `<button type="button" class="link" data-price-clear="${esc(m.model_id)}">清空</button>`;
+    }
+    return `${hasDraft ? `<button type="button" class="link" data-price-clear="${esc(m.model_id)}">清空</button>` : ''}`
+      + `<button type="button" class="link subtle" data-price-hide="${esc(m.model_id)}">隐藏</button>`;
+  }
+
+  function bindPriceRowActionButtons(container) {
+    container.querySelectorAll('[data-price-clear]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = priceKey(btn.dataset.priceClear);
+        PRICE_DRAFT[key] = emptyDraftRow();
+        renderPrices();
+      });
+    });
+    container.querySelectorAll('[data-price-restore]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = priceKey(btn.dataset.priceRestore);
+        const modelObj = PRICE_ROWS.find(m => priceKey(m.model_id) === key);
+        PRICE_DRAFT[key] = draftFromPrice(modelObj ? modelObj.price : null);
+        renderPrices();
+      });
+    });
+    container.querySelectorAll('[data-price-hide]').forEach(btn => {
+      btn.addEventListener('click', () => setModelHidden(btn.dataset.priceHide, true));
+    });
+    container.querySelectorAll('[data-price-unhide]').forEach(btn => {
+      btn.addEventListener('click', () => setModelHidden(btn.dataset.priceUnhide, false));
+    });
+  }
+
+  body.innerHTML = visible.map(m => {
+    const key = priceKey(m.model_id);
+    const isHidden = !m.price && PRICE_HIDDEN.has(key);
+    const draft = PRICE_DRAFT[key] || emptyDraftRow();
+    const hasDraft = draftHasValue(draft);
+    const dirty = isPriceRowDirty(m);
+    const classes = [];
+    if (isHidden) classes.push('row-hidden');
+    if (dirty) classes.push('row-dirty');
+    const actionsHtml = buildPriceRowActions(m, isHidden, hasDraft);
+
+    return `<tr class="${classes.join(' ')}" data-price-row="${esc(m.model_id)}">
       <td class="mono">${esc(m.model_id)}</td>
       <td class="mono">${Number(m.total_tokens).toLocaleString()}</td>
       ${PRICE_FIELDS.map(f => `<td class="num"><input type="number" min="0" step="any"
-        data-price-field="${f}" value="${m.price ? esc(m.price[f]) : ''}"></td>`).join('')}
-      <td class="actions"><button class="link" data-price-clear="1">清空</button></td>
-    </tr>`).join('');
-  body.querySelectorAll('[data-price-clear]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('tr').querySelectorAll('[data-price-field]')
-        .forEach(input => { input.value = ''; });
+        data-price-field="${f}" value="${isHidden ? '' : esc(draft[f])}"
+        ${isHidden ? 'disabled placeholder="已隐藏"' : ''}></td>`).join('')}
+      <td class="actions"><div class="row">${actionsHtml}</div></td>
+    </tr>`;
+  }).join('');
+
+  if (shouldTruncate) {
+    moreBar.style.display = 'flex';
+    const remaining = filtered.length - PRICE_PAGE_SIZE;
+    moreBtn.textContent = PRICE_EXPANDED
+      ? `收起，仅显示前 ${PRICE_PAGE_SIZE} 个`
+      : (PRICE_FILTER === 'pending' || PRICE_FILTER === 'all'
+        ? `展开其余 ${remaining} 个低用量模型（共 ${filtered.length} 个）`
+        : `展开其余 ${remaining} 个模型（共 ${filtered.length} 个）`);
+  } else {
+    moreBar.style.display = 'none';
+  }
+
+  body.querySelectorAll('tr[data-price-row]').forEach(tr => {
+    const modelId = tr.dataset.priceRow;
+    const key = priceKey(modelId);
+    const modelObj = PRICE_ROWS.find(m => priceKey(m.model_id) === key);
+    if (!modelObj) return;
+    tr.querySelectorAll('[data-price-field]').forEach(input => {
+      input.addEventListener('input', () => {
+        if (!PRICE_DRAFT[key]) PRICE_DRAFT[key] = emptyDraftRow();
+        const hadDraft = draftHasValue(PRICE_DRAFT[key]);
+        PRICE_DRAFT[key][input.dataset.priceField] = input.value;
+        const nowHasDraft = draftHasValue(PRICE_DRAFT[key]);
+        tr.classList.toggle('row-dirty', isPriceRowDirty(modelObj));
+        updatePricesSummary();
+        // Update only the row's action cell in place so typing never drops focus.
+        if (hadDraft !== nowHasDraft) {
+          const actionsRow = tr.querySelector('td.actions .row');
+          if (actionsRow) {
+            const isHidden = !modelObj.price && PRICE_HIDDEN.has(key);
+            actionsRow.innerHTML = buildPriceRowActions(modelObj, isHidden, nowHasDraft);
+            bindPriceRowActionButtons(actionsRow);
+          }
+        }
+      });
     });
   });
+
+  bindPriceRowActionButtons(body);
+}
+
+async function setModelHidden(modelId, hidden) {
+  const key = priceKey(modelId);
+  const next = new Set(PRICE_HIDDEN);
+  if (hidden) next.add(key);
+  else next.delete(key);
+
+  const status = document.getElementById('price-status');
+  status.className = 'muted';
+  status.textContent = hidden ? '隐藏中…' : '恢复中…';
+  let resp;
+  try {
+    resp = await api('/api/admin/model-prices/hidden', {
+      method: 'PUT',
+      body: { hidden_models: Array.from(next) },
+    });
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = e.message;
+    return;
+  }
+  PRICE_HIDDEN = new Set(resp.hidden_models || []);
+  if (hidden) {
+    PRICE_DRAFT[key] = emptyDraftRow();
+  }
+  renderPrices();
+  status.className = 'ok';
+  if (hidden) {
+    status.innerHTML = `已隐藏 <code>${esc(modelId)}</code> <button type="button" class="link" id="price-undo-hide-btn">撤销</button>`;
+    const undoBtn = document.getElementById('price-undo-hide-btn');
+    if (undoBtn) undoBtn.addEventListener('click', () => setModelHidden(modelId, false));
+  } else {
+    status.innerHTML = `已恢复 <code>${esc(modelId)}</code>`;
+  }
 }
 
 function collectPrices() {
-  // A row with all four boxes empty is left out of the payload — that IS how
-  // an override gets deleted. A partly filled row sends 0 for the blanks.
+  // Collect from the complete in-memory draft rather than visible DOM rows, so
+  // switching filters, searching, or collapsing rows never drops other overrides.
+  // A row with all four boxes empty is left out — that deletes an override.
   const out = {};
-  document.querySelectorAll('[data-price-row]').forEach(tr => {
+  PRICE_ROWS.forEach(m => {
+    const key = priceKey(m.model_id);
+    if (!m.price && PRICE_HIDDEN.has(key)) return;
+    const draft = PRICE_DRAFT[key] || emptyDraftRow();
     const spec = {};
     let filled = false;
-    tr.querySelectorAll('[data-price-field]').forEach(input => {
-      const raw = input.value.trim();
+    PRICE_FIELDS.forEach(f => {
+      const raw = String(draft[f] || '').trim();
       if (raw !== '') filled = true;
-      spec[input.dataset.priceField] = raw === '' ? 0 : Number(raw);
+      spec[f] = raw === '' ? 0 : Number(raw);
     });
-    if (filled) out[tr.dataset.priceRow] = spec;
+    if (filled) out[m.model_id] = spec;
   });
   return out;
 }
@@ -1576,13 +2294,33 @@ async function savePrices() {
 
 // ── push auth ──────────────────────────────────────────────
 
+let PUSH_AUTH_SAVED = { secret: '', enforce: false };
+
+function updatePushAuthSummary() {
+  const input = document.getElementById('push-secret');
+  const enforce = document.getElementById('enforce-push-auth').checked;
+  const hasSecret = !!(input.value && input.value.trim());
+  const summary = document.getElementById('summary-push-auth');
+  if (summary) {
+    summary.textContent = `${hasSecret ? '已配置' : '未配置'} · ${enforce ? '强制校验开启' : '仅记日志'}`;
+  }
+  const dirty = document.getElementById('dirty-push-auth');
+  if (dirty) {
+    const secretChanged = input.dataset.masked !== '1' && input.value !== PUSH_AUTH_SAVED.secret;
+    const enforceChanged = enforce !== PUSH_AUTH_SAVED.enforce;
+    dirty.hidden = !(secretChanged || enforceChanged);
+  }
+}
+
 async function loadPushAuth() {
   const data = await api('/api/admin/push-auth');
   const input = document.getElementById('push-secret');
   input.value = data.push_auth_secret;
   input.dataset.masked = '1';
   document.getElementById('enforce-push-auth').checked = data.enforce_push_auth;
+  PUSH_AUTH_SAVED = { secret: data.push_auth_secret, enforce: !!data.enforce_push_auth };
   document.getElementById('push-auth-status').textContent = '';
+  updatePushAuthSummary();
 }
 
 async function revealPushSecret() {
@@ -1590,6 +2328,8 @@ async function revealPushSecret() {
   const input = document.getElementById('push-secret');
   input.value = data.push_auth_secret;
   input.dataset.masked = '0';
+  PUSH_AUTH_SAVED.secret = data.push_auth_secret;
+  updatePushAuthSummary();
 }
 
 function generatePushSecret() {
@@ -1599,6 +2339,7 @@ function generatePushSecret() {
   const input = document.getElementById('push-secret');
   input.value = secret;
   input.dataset.masked = '0';
+  updatePushAuthSummary();
 }
 
 async function savePushAuth() {
@@ -1631,10 +2372,25 @@ async function savePushAuth() {
 
 // ── display settings ─────────────────────────────────────
 
+let DISPLAY_SAVED_TTL = '';
+
+function updateDisplaySettingsSummary() {
+  const raw = document.getElementById('push-card-ttl').value;
+  const summary = document.getElementById('summary-display-settings');
+  if (summary) {
+    summary.textContent = raw !== '' ? `推送卡片超时 ${raw} 小时` : '未设置';
+  }
+  const dirty = document.getElementById('dirty-display-settings');
+  if (dirty) dirty.hidden = String(raw) === String(DISPLAY_SAVED_TTL);
+}
+
 async function loadDisplaySettings() {
   const data = await api('/api/admin/display-settings');
-  document.getElementById('push-card-ttl').value = data.push_card_ttl_hours;
+  const val = data.push_card_ttl_hours;
+  document.getElementById('push-card-ttl').value = val;
+  DISPLAY_SAVED_TTL = String(val);
   document.getElementById('display-settings-status').textContent = '';
+  updateDisplaySettingsSummary();
 }
 
 async function saveDisplaySettings() {
@@ -1709,7 +2465,7 @@ async function doImport() {
     status.textContent = 'JSON 解析失败：' + e.message;
     return;
   }
-  if (!confirm('导入将覆盖现有全部配置（实例、模型别名、推送认证），确定继续？')) return;
+  if (!confirm('导入将覆盖现有全部配置（实例、模型别名、模型价格、推送认证），确定继续？')) return;
   try {
     await api('/api/admin/import', { method: 'POST', body: payload });
   } catch (e) {
@@ -1732,6 +2488,29 @@ document.getElementById('alias-add-btn').addEventListener('click', () => {
 });
 document.getElementById('alias-save-btn').addEventListener('click', saveAliases);
 document.getElementById('price-save-btn').addEventListener('click', savePrices);
+document.querySelectorAll('[data-price-filter]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    PRICE_FILTER = btn.dataset.priceFilter;
+    PRICE_FILTER_USER_SET = true;
+    PRICE_EXPANDED = false;
+    renderPrices();
+  });
+});
+document.getElementById('price-search').addEventListener('input', e => {
+  PRICE_SEARCH = e.target.value;
+  PRICE_EXPANDED = false;
+  renderPrices();
+});
+document.getElementById('prices-more-btn').addEventListener('click', () => {
+  PRICE_EXPANDED = !PRICE_EXPANDED;
+  renderPrices();
+});
+document.getElementById('push-secret').addEventListener('input', () => {
+  document.getElementById('push-secret').dataset.masked = '0';
+  updatePushAuthSummary();
+});
+document.getElementById('enforce-push-auth').addEventListener('change', updatePushAuthSummary);
+document.getElementById('push-card-ttl').addEventListener('input', updateDisplaySettingsSummary);
 document.getElementById('push-secret-reveal-btn').addEventListener('click', revealPushSecret);
 document.getElementById('push-secret-generate-btn').addEventListener('click', generatePushSecret);
 document.getElementById('push-auth-save-btn').addEventListener('click', savePushAuth);
@@ -1741,7 +2520,123 @@ document.getElementById('logout-all-btn').addEventListener('click', logoutAll);
 document.getElementById('export-btn').addEventListener('click', doExport);
 document.getElementById('import-btn').addEventListener('click', doImport);
 
-// ── section nav: highlight the section being read ─────────
+// ── collapsible sections + section nav ─────────────────────
+
+const SECTION_STORAGE_KEY = 'ai-plan-insight:admin-open-sections';
+const ALL_SECTION_IDS = [
+  'instances-panel', 'aliases-panel', 'prices-panel',
+  'push-auth-panel', 'display-settings-panel', 'password-panel', 'io-panel',
+];
+const DEFAULT_OPEN_SECTIONS = ['instances-panel'];
+let OPEN_SECTIONS = new Set(DEFAULT_OPEN_SECTIONS);
+let SECTIONS_BOUND = false;
+let ACTIVE_NAV_OVERRIDE = null;
+
+function readSavedOpenSections() {
+  try {
+    const raw = localStorage.getItem(SECTION_STORAGE_KEY);
+    if (raw === null) return DEFAULT_OPEN_SECTIONS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_OPEN_SECTIONS;
+    return parsed.filter(id => ALL_SECTION_IDS.includes(id));
+  } catch (e) {
+    return DEFAULT_OPEN_SECTIONS;
+  }
+}
+
+function saveOpenSections() {
+  try {
+    localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(Array.from(OPEN_SECTIONS)));
+  } catch (e) { /* storage blocked */ }
+}
+
+function applySectionState(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  const open = OPEN_SECTIONS.has(sectionId);
+  section.classList.toggle('is-open', open);
+  const toggle = section.querySelector('.panel-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const content = section.querySelector('.panel-collapse');
+  if (content) content.hidden = !open;
+}
+
+function updateToggleAllBtn() {
+  const btn = document.getElementById('toggle-all-sections-btn');
+  if (!btn) return;
+  const allOpen = ALL_SECTION_IDS.every(id => OPEN_SECTIONS.has(id));
+  btn.textContent = allOpen ? '全部收起' : '全部展开';
+}
+
+function setSectionOpen(sectionId, open, persist = true) {
+  if (!ALL_SECTION_IDS.includes(sectionId)) return;
+  if (open) OPEN_SECTIONS.add(sectionId);
+  else OPEN_SECTIONS.delete(sectionId);
+  applySectionState(sectionId);
+  updateToggleAllBtn();
+  if (persist) saveOpenSections();
+  updateSectionNav();
+}
+
+function openHashSection(scroll = true) {
+  const id = (location.hash || '').replace(/^#/, '');
+  if (!ALL_SECTION_IDS.includes(id)) return;
+  setSectionOpen(id, true);
+  ACTIVE_NAV_OVERRIDE = id;
+  if (scroll) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  updateSectionNav();
+}
+
+function initCollapsibleSections() {
+  OPEN_SECTIONS = new Set(readSavedOpenSections());
+  ALL_SECTION_IDS.forEach(applySectionState);
+  updateToggleAllBtn();
+
+  if (SECTIONS_BOUND) return;
+  SECTIONS_BOUND = true;
+
+  ALL_SECTION_IDS.forEach(id => {
+    const section = document.getElementById(id);
+    const toggle = section && section.querySelector('.panel-toggle');
+    if (!toggle) return;
+    toggle.addEventListener('click', () => {
+      ACTIVE_NAV_OVERRIDE = null;
+      setSectionOpen(id, !OPEN_SECTIONS.has(id));
+    });
+  });
+
+  const toggleAllBtn = document.getElementById('toggle-all-sections-btn');
+  if (toggleAllBtn) {
+    toggleAllBtn.addEventListener('click', () => {
+      const allOpen = ALL_SECTION_IDS.every(id => OPEN_SECTIONS.has(id));
+      OPEN_SECTIONS = allOpen ? new Set() : new Set(ALL_SECTION_IDS);
+      ALL_SECTION_IDS.forEach(applySectionState);
+      updateToggleAllBtn();
+      saveOpenSections();
+      ACTIVE_NAV_OVERRIDE = null;
+      updateSectionNav();
+    });
+  }
+
+  document.querySelectorAll('#section-nav a[href^="#"]').forEach(link => {
+    link.addEventListener('click', e => {
+      const id = link.getAttribute('href').slice(1);
+      if (!ALL_SECTION_IDS.includes(id)) return;
+      e.preventDefault();
+      setSectionOpen(id, true);
+      ACTIVE_NAV_OVERRIDE = id;
+      if (history.replaceState) history.replaceState(null, '', '#' + id);
+      const target = document.getElementById(id);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      updateSectionNav();
+    });
+  });
+
+  window.addEventListener('hashchange', () => openHashSection(true));
+}
 
 function updateSectionNav() {
   const nav = document.getElementById('section-nav');
@@ -1749,14 +2644,19 @@ function updateSectionNav() {
   const links = [...nav.querySelectorAll('a[href^="#"]')];
   const sections = links.map(a => document.getElementById(a.getAttribute('href').slice(1))).filter(Boolean);
   if (!sections.length) return;
-  // A section counts as current once its top passes just under the sticky
-  // chrome; at the very bottom of the page the last one wins, since short
-  // final sections can never scroll that far up.
-  const line = parseFloat(getComputedStyle(sections[0]).scrollMarginTop) + 24;
-  let current = sections[0].id;
-  sections.forEach(s => { if (s.getBoundingClientRect().top <= line) current = s.id; });
-  const doc = document.documentElement;
-  if (window.innerHeight + window.scrollY >= doc.scrollHeight - 4) current = sections[sections.length - 1].id;
+  let current = ACTIVE_NAV_OVERRIDE || sections[0].id;
+  if (!ACTIVE_NAV_OVERRIDE) {
+    // A section counts as current once its top passes just under the sticky
+    // chrome; at the very bottom of a scrollable page the last one wins, since
+    // short final sections can never scroll that far up.
+    const line = parseFloat(getComputedStyle(sections[0]).scrollMarginTop) + 24;
+    sections.forEach(s => { if (s.getBoundingClientRect().top <= line) current = s.id; });
+    const doc = document.documentElement;
+    if (window.scrollY > 4 && doc.scrollHeight > window.innerHeight + 20
+        && window.innerHeight + window.scrollY >= doc.scrollHeight - 4) {
+      current = sections[sections.length - 1].id;
+    }
+  }
   links.forEach(a => {
     const on = a.getAttribute('href') === '#' + current;
     if (on && !a.classList.contains('active') && nav.scrollWidth > nav.clientWidth) {
@@ -1768,7 +2668,12 @@ function updateSectionNav() {
 }
 
 let sectionNavFrame = null;
+let scrollClearTimer = null;
 window.addEventListener('scroll', () => {
+  if (ACTIVE_NAV_OVERRIDE) {
+    clearTimeout(scrollClearTimer);
+    scrollClearTimer = setTimeout(() => { ACTIVE_NAV_OVERRIDE = null; }, 400);
+  }
   if (sectionNavFrame) return;
   sectionNavFrame = requestAnimationFrame(() => { sectionNavFrame = null; updateSectionNav(); });
 }, { passive: true });

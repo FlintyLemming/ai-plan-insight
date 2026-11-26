@@ -305,6 +305,47 @@ class TestPrices:
         assert list(config_store.get_prices(conn)) == ["a"]
 
 
+class TestHiddenPriceModels:
+    def test_empty_initially(self, conn):
+        assert config_store.get_hidden_price_models(conn) == []
+
+    def test_replace_normalizes_sorts_and_deduplicates(self, conn):
+        saved = config_store.replace_hidden_price_models(
+            conn, ["  Zeta-Model ", "alpha", "ALPHA"]
+        )
+        assert saved == ["alpha", "zeta-model"]
+        assert config_store.get_hidden_price_models(conn) == ["alpha", "zeta-model"]
+
+    def test_replace_does_not_bump_config_version(self, conn):
+        before = config_store.get_config_version(conn)
+        config_store.replace_hidden_price_models(conn, ["cursor-test"])
+        assert config_store.get_config_version(conn) == before
+
+    def test_rejects_non_list(self):
+        with pytest.raises(ValueError):
+            config_store.validate_hidden_price_models("not-a-list")
+
+    def test_rejects_empty_or_non_string_item(self):
+        with pytest.raises(ValueError):
+            config_store.validate_hidden_price_models(["  "])
+        with pytest.raises(ValueError):
+            config_store.validate_hidden_price_models([123])
+
+    def test_malformed_json_degrades_to_empty_list(self, conn):
+        config_store._set_setting(conn, "hidden_price_models", "{bad-json")
+        conn.commit()
+        assert config_store.get_hidden_price_models(conn) == []
+
+    def test_replace_prices_removes_newly_priced_model_from_hidden(self, conn):
+        config_store.replace_hidden_price_models(conn, ["model-a", "model-b"])
+        config_store.replace_prices(conn, {"Model-A": {"input": 1, "output": 2}})
+        assert config_store.get_hidden_price_models(conn) == ["model-b"]
+
+    def test_hidden_alone_still_counts_as_empty(self, conn):
+        config_store.replace_hidden_price_models(conn, ["model-a"])
+        assert config_store.is_config_empty(conn) is True
+
+
 class TestPushAuth:
     def test_defaults(self, conn):
         assert config_store.get_push_auth(conn) == ("", False)
@@ -509,6 +550,7 @@ class TestExportImport:
             },
             "model_aliases": {"GLM 5.2": ["glm-5.2"]},
             "model_prices": {},
+            "hidden_price_models": [],
             "push_auth_secret": "s3cret",
             "enforce_push_auth": True,
             "push_card_ttl_hours": 1.0,
@@ -632,8 +674,43 @@ class TestExportImport:
         assert "_push_card_ttl" in exc.value.errors
         assert config_store.get_push_card_ttl(conn) == 1.0
 
-    def test_parse_import_payload_returns_six_values(self):
-        rows, aliases, prices, ttl, secret, enforce = config_store.parse_import_payload({
-            "providers": {}, "push_card_ttl_hours": 1.5,
+    def test_parse_import_payload_returns_seven_values(self):
+        rows, aliases, prices, hidden, ttl, secret, enforce = config_store.parse_import_payload({
+            "providers": {},
+            "hidden_price_models": ["Model-X"],
+            "push_card_ttl_hours": 1.5,
         })
+        assert hidden == ["model-x"]
         assert ttl == 1.5
+
+    def test_export_includes_hidden_price_models(self, conn):
+        config_store.replace_hidden_price_models(conn, ["cursor-free"])
+        assert config_store.export_config(conn)["hidden_price_models"] == ["cursor-free"]
+
+    def test_hidden_price_models_roundtrip(self, conn):
+        config_store.replace_hidden_price_models(conn, ["cursor-free", "local-test"])
+        exported = config_store.export_config(conn)
+        config_store.import_config(conn, exported)
+        assert config_store.export_config(conn) == exported
+
+    def test_import_without_hidden_price_models_clears_them(self, conn):
+        config_store.replace_hidden_price_models(conn, ["cursor-free"])
+        config_store.import_config(conn, {"providers": {}})
+        assert config_store.get_hidden_price_models(conn) == []
+
+    def test_import_rejects_invalid_hidden_price_models_and_writes_nothing(self, conn):
+        config_store.replace_hidden_price_models(conn, ["keep-hidden"])
+        with pytest.raises(config_store.ImportValidationError) as exc:
+            config_store.import_config(conn, {
+                "providers": {}, "hidden_price_models": [123],
+            })
+        assert "_hidden_price_models" in exc.value.errors
+        assert config_store.get_hidden_price_models(conn) == ["keep-hidden"]
+
+    def test_import_drops_hidden_entries_that_also_have_prices(self, conn):
+        config_store.import_config(conn, {
+            "providers": {},
+            "model_prices": {"cursor-grok": {"input": 2, "output": 6}},
+            "hidden_price_models": ["cursor-grok", "cursor-free"],
+        })
+        assert config_store.get_hidden_price_models(conn) == ["cursor-free"]

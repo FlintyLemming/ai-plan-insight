@@ -104,6 +104,12 @@ class ModelPricesRequest(BaseModel):
     model_prices: dict[str, Any]
 
 
+class HiddenPriceModelsRequest(BaseModel):
+    # Deliberately untyped: config_store.validate_hidden_price_models owns
+    # the rules and error messages.
+    hidden_models: Any
+
+
 class PushAuthRequest(BaseModel):
     push_auth_secret: str
     enforce_push_auth: bool
@@ -322,31 +328,51 @@ PRICE_WINDOW_DAYS = 90
 
 
 def _price_rows(
-    usage: list[tuple[str, int]], overrides: dict[str, dict], price_of
+    usage: list[tuple[str, int]],
+    overrides: dict[str, dict],
+    price_of,
+    hidden: set[str] | list[str] = (),
 ) -> list[dict]:
-    """Rows for the price panel: unpriced-in-window ∪ already-overridden.
+    """Rows for the price panel: unpriced-in-window ∪ already-overridden ∪ hidden.
 
-    Usage-derived rows keep their busiest-first order; overrides with no usage
-    in the window are appended (id-sorted, zero tokens) so every override stays
-    visible, editable and deletable even after upstream learns the model.
+    Usage-derived rows keep their busiest-first order; overrides and hidden ids
+    with no usage in the window are appended (id-sorted, zero tokens) so every
+    override or hidden entry stays visible and reversible even after upstream
+    learns the model or usage ages out.
     """
+    hidden_set = {
+        m.strip().lower() for m in hidden if isinstance(m, str) and m.strip()
+    }
     rows: list[dict] = []
     seen: set[str] = set()
     for model_id, total in usage:
         key = model_id.strip().lower()
         if key in seen:
             continue
-        if key not in overrides and price_of(model_id) is not None:
+        if key not in overrides and key not in hidden_set and price_of(model_id) is not None:
             continue
         seen.add(key)
+        price = overrides.get(key)
         rows.append({
             "model_id": model_id,
             "total_tokens": total,
-            "price": overrides.get(key),
+            "price": price,
+            "hidden": (key in hidden_set) and (price is None),
         })
     for key in sorted(overrides):
         if key not in seen:
-            rows.append({"model_id": key, "total_tokens": 0, "price": overrides[key]})
+            seen.add(key)
+            rows.append({
+                "model_id": key, "total_tokens": 0,
+                "price": overrides[key], "hidden": False,
+            })
+    for key in sorted(hidden_set):
+        if key not in seen:
+            seen.add(key)
+            rows.append({
+                "model_id": key, "total_tokens": 0,
+                "price": None, "hidden": True,
+            })
     return rows
 
 
@@ -372,11 +398,12 @@ async def get_model_prices():
 
     with closing_conn() as conn:
         overrides = config_store.get_prices(conn)
+        hidden = config_store.get_hidden_price_models(conn)
         usage = usage_store.list_raw_model_usage(conn, PRICE_WINDOW_DAYS)
     return {
         "window_days": PRICE_WINDOW_DAYS,
         "pricing_ready": True,
-        "models": _price_rows(usage, overrides, service.price_for),
+        "models": _price_rows(usage, overrides, service.price_for, hidden),
     }
 
 
@@ -388,6 +415,16 @@ async def put_model_prices(req: ModelPricesRequest):
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
+
+
+@protected.put("/model-prices/hidden")
+async def put_hidden_price_models(req: HiddenPriceModelsRequest):
+    with closing_conn() as conn:
+        try:
+            normalized = config_store.replace_hidden_price_models(conn, req.hidden_models)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True, "hidden_models": normalized}
 
 
 # ── push auth ─────────────────────────────────────────────────

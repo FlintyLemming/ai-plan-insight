@@ -450,7 +450,12 @@ class TestModelPrices:
         assert body["window_days"] == 90
         assert body["pricing_ready"] is True
         assert body["models"] == [
-            {"model_id": "cursor-grok-4.5-high", "total_tokens": 50, "price": None},
+            {
+                "model_id": "cursor-grok-4.5-high",
+                "total_tokens": 50,
+                "price": None,
+                "hidden": False,
+            },
         ]
 
     def test_orders_unpriced_models_by_tokens_desc(self, admin, db, monkeypatch):
@@ -555,6 +560,75 @@ class TestModelPrices:
             "model_prices": {"a": {"input": 1, "output": 2, "cache-read": 1}},
         }).status_code == 422
 
+    def test_put_hidden_requires_login(self, client):
+        assert client.put(
+            "/api/admin/model-prices/hidden", json={"hidden_models": ["a"]}
+        ).status_code == 401
+
+    def test_put_hidden_marks_model_hidden_and_persists(self, admin, db, monkeypatch):
+        _seed_usage(db, {"cursor-free": 120, "cursor-paid": 500})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        resp = admin.put("/api/admin/model-prices/hidden", json={
+            "hidden_models": ["Cursor-Free"],
+        })
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "hidden_models": ["cursor-free"]}
+
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        by_id = {m["model_id"]: m for m in models}
+        assert by_id["cursor-free"]["hidden"] is True
+        assert by_id["cursor-paid"]["hidden"] is False
+
+    def test_hidden_model_without_recent_usage_stays_listed_as_hidden(
+        self, admin, db, monkeypatch
+    ):
+        _seed_usage(db, {"busy": 100})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        admin.put("/api/admin/model-prices/hidden", json={
+            "hidden_models": ["old-unused-model"],
+        })
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        assert models[-1] == {
+            "model_id": "old-unused-model",
+            "total_tokens": 0,
+            "price": None,
+            "hidden": True,
+        }
+
+    def test_hidden_model_stays_listed_even_if_upstream_learns_price(
+        self, admin, db, monkeypatch
+    ):
+        _seed_usage(db, {"grok-4.5": 100})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing({
+            "grok-4.5": ModelPrice(input=1e-6, output=2e-6),
+        }))
+        admin.put("/api/admin/model-prices/hidden", json={"hidden_models": ["grok-4.5"]})
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        assert models == [{
+            "model_id": "grok-4.5", "total_tokens": 100, "price": None, "hidden": True,
+        }]
+
+    def test_saving_price_for_hidden_model_unhides_it(self, admin, db, monkeypatch):
+        _seed_usage(db, {"cursor-free": 100})
+        monkeypatch.setattr(web, "_pricing_service", _StubPricing())
+        admin.put("/api/admin/model-prices/hidden", json={"hidden_models": ["cursor-free"]})
+        admin.put("/api/admin/model-prices", json={
+            "model_prices": {"cursor-free": {"input": 1, "output": 2}},
+        })
+        models = admin.get("/api/admin/model-prices").json()["models"]
+        assert models[0]["hidden"] is False
+        assert models[0]["price"]["input"] == 1.0
+        with closing(sqlite3.connect(db)) as conn:
+            assert config_store.get_hidden_price_models(conn) == []
+
+    def test_put_hidden_rejects_invalid_payload(self, admin):
+        assert admin.put(
+            "/api/admin/model-prices/hidden", json={"hidden_models": "not-a-list"}
+        ).status_code == 422
+        assert admin.put(
+            "/api/admin/model-prices/hidden", json={"hidden_models": [""]}
+        ).status_code == 422
+
 
 class TestPushAuthEndpoint:
     def test_get_masks_the_secret(self, admin):
@@ -653,11 +727,16 @@ class TestExportImport:
         assert admin.put("/api/admin/model-prices", json={
             "model_prices": {"cursor-grok": {"input": 2, "output": 6}},
         }).status_code == 200
+        assert admin.put("/api/admin/model-prices/hidden", json={
+            "hidden_models": ["cursor-free"],
+        }).status_code == 200
         exported = admin.get("/api/admin/export").json()
         assert exported["model_prices"]["cursor-grok"]["input"] == 2.0
+        assert exported["hidden_price_models"] == ["cursor-free"]
         assert admin.post("/api/admin/import", json=exported).status_code == 200
         with closing(sqlite3.connect(db)) as conn:
             assert list(config_store.get_prices(conn)) == ["cursor-grok"]
+            assert config_store.get_hidden_price_models(conn) == ["cursor-free"]
 
     def test_import_roundtrips_an_export(self, admin):
         exported = admin.get("/api/admin/export").json()
