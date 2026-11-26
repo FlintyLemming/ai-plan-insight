@@ -198,6 +198,21 @@ async def admin_page():
     return HTMLResponse(content=ADMIN_HTML, status_code=200)
 
 
+def _extract_client_ip(request: Request) -> str | None:
+    """Best-effort reporting machine IP for display in the admin panel."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return first[:64]
+    real_ip = (request.headers.get("x-real-ip") or "").strip()
+    if real_ip:
+        return real_ip[:64]
+    if request.client and request.client.host:
+        return request.client.host.strip()[:64] or None
+    return None
+
+
 @app.post("/api/usage/report")
 async def report_usage(req: UsageReportRequest, request: Request):
     if not req.source_id:
@@ -212,6 +227,7 @@ async def report_usage(req: UsageReportRequest, request: Request):
     if cfg.enforce_push_auth and not is_valid:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+    client_ip = _extract_client_ip(request)
     try:
         with closing(_usage_conn()) as conn:
             written, dropped = usage_store.upsert_points(
@@ -220,6 +236,7 @@ async def report_usage(req: UsageReportRequest, request: Request):
                 req.source_label,
                 [p.model_dump() for p in req.points],
                 reported_at=req.reported_at,
+                last_ip=client_ip,
             )
             usage_store.update_source_auth(
                 conn, req.source_id, is_valid, datetime.now().astimezone().isoformat()

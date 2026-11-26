@@ -34,22 +34,26 @@ CREATE TABLE IF NOT EXISTS usage_point (
 
 _CREATE_SOURCE = """
 CREATE TABLE IF NOT EXISTS source (
-    source_id     TEXT PRIMARY KEY,
-    label         TEXT,
-    last_seen     TEXT,
-    frozen_before TEXT,
-    auth_valid    INTEGER NOT NULL DEFAULT 0,
-    last_auth_at  TEXT
+    source_id          TEXT PRIMARY KEY,
+    label              TEXT,
+    last_seen          TEXT,
+    frozen_before      TEXT,
+    auth_valid         INTEGER NOT NULL DEFAULT 0,
+    last_auth_at       TEXT,
+    stale_dismissed_at TEXT,
+    last_ip            TEXT
 )
 """
 
 def init_schema(conn: sqlite3.Connection) -> None:
     """Create tables (idempotent) and enable WAL.
 
-    Also back-fills columns added after the initial schema: `source.frozen_before`
-    and the three token-breakdown columns on `usage_point` (cache_read_tokens,
-    cache_write_tokens, reasoning_tokens). Each is added via ALTER TABLE only if
-    absent, so existing databases upgrade in place without a manual migration.
+    Also back-fills columns added after the initial schema: `source.frozen_before`,
+    `source.auth_valid`, `source.last_auth_at`, `source.stale_dismissed_at`,
+    `source.last_ip`, and the three token-breakdown columns on `usage_point`
+    (cache_read_tokens, cache_write_tokens, reasoning_tokens). Each is added
+    via ALTER TABLE only if absent, so existing databases upgrade in place
+    without a manual migration.
     """
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(_CREATE_USAGE_POINT)
@@ -63,6 +67,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE source ADD COLUMN last_auth_at TEXT")
     if "stale_dismissed_at" not in cols:
         conn.execute("ALTER TABLE source ADD COLUMN stale_dismissed_at TEXT")
+    if "last_ip" not in cols:
+        conn.execute("ALTER TABLE source ADD COLUMN last_ip TEXT")
     usage_cols = {row[1] for row in conn.execute("PRAGMA table_info(usage_point)")}
     for col in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
         if col not in usage_cols:
@@ -88,6 +94,7 @@ def upsert_points(
     points: Iterable[Mapping[str, Any]],
     reported_at: str | None = None,
     now: str | None = None,
+    last_ip: str | None = None,
 ) -> tuple[int, int]:
     """Apply one snapshot payload for one source in the caller's transaction.
 
@@ -158,17 +165,19 @@ def upsert_points(
         effective = min(reported_at, datetime.now(UTC8).strftime("%Y-%m-%d"))
         if new_frozen is None or effective > new_frozen:
             new_frozen = effective
+    clean_ip = (last_ip or "").strip() or None
     # A fresh report also re-arms the stale alert: any dismissal only holds
     # until the device comes back, so the next outage alerts again.
     conn.execute(
-        "INSERT INTO source (source_id, label, last_seen, frozen_before) "
-        "VALUES (?, ?, ?, ?) "
+        "INSERT INTO source (source_id, label, last_seen, frozen_before, last_ip) "
+        "VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(source_id) DO UPDATE SET "
         "label=COALESCE(excluded.label, source.label), "
         "last_seen=excluded.last_seen, "
         "frozen_before=excluded.frozen_before, "
+        "last_ip=COALESCE(excluded.last_ip, source.last_ip), "
         "stale_dismissed_at=NULL",
-        (source_id, source_label, ts, new_frozen),
+        (source_id, source_label, ts, new_frozen, clean_ip),
     )
     return written, dropped
 
@@ -312,6 +321,18 @@ def update_source_auth(
 STALE_THRESHOLD = timedelta(hours=24)
 
 
+def _parse_iso_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC8)
+    return dt
+
+
 def get_stale_sources(
     conn: sqlite3.Connection, now: datetime | None = None
 ) -> list[dict]:
@@ -330,12 +351,9 @@ def get_stale_sources(
     ).fetchall()
     out: list[dict] = []
     for source_id, label, last_seen in rows:
-        try:
-            seen_at = datetime.fromisoformat(last_seen)
-        except ValueError:
+        seen_at = _parse_iso_dt(last_seen)
+        if seen_at is None:
             continue
-        if seen_at.tzinfo is None:
-            seen_at = seen_at.replace(tzinfo=UTC8)
         if ref - seen_at > STALE_THRESHOLD:
             out.append(
                 {"source_id": source_id, "label": label, "last_seen": last_seen}
@@ -356,6 +374,151 @@ def dismiss_stale_source(
         (now, source_id),
     )
     return cur.rowcount > 0
+
+
+def restore_stale_source(conn: sqlite3.Connection, source_id: str) -> bool:
+    """Re-arm a previously dismissed stale alert; caller must commit.
+
+    Returns False when the source does not exist (for the endpoint's 404).
+    """
+    cur = conn.execute(
+        "UPDATE source SET stale_dismissed_at = NULL WHERE source_id = ?",
+        (source_id,),
+    )
+    return cur.rowcount > 0
+
+
+def list_usage_sources(
+    conn: sqlite3.Connection,
+    alias_lookup: Mapping[str, str] | None = None,
+    now: datetime | None = None,
+    top_models_limit: int = 5,
+) -> list[dict]:
+    """Return reporting machines (`source.last_seen IS NOT NULL`) with usage stats.
+
+    Push-card stub rows (`last_seen IS NULL`) are excluded because they are
+    already managed under provider instances. Ordered by `last_seen` descending
+    (most recently active first), tie-broken by `source_id`.
+    """
+    ref = now or datetime.now(UTC8)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=UTC8)
+    today = ref.astimezone(UTC8).date()
+    today_str = today.isoformat()
+    start_7d = (today - timedelta(days=6)).isoformat()
+    start_30d = (today - timedelta(days=29)).isoformat()
+
+    source_rows = conn.execute(
+        "SELECT source_id, label, last_seen, frozen_before, auth_valid, "
+        "       last_auth_at, stale_dismissed_at, last_ip "
+        "FROM source "
+        "WHERE last_seen IS NOT NULL "
+        "ORDER BY source_id"
+    ).fetchall()
+    if not source_rows:
+        return []
+
+    stats_by_source: dict[str, dict[str, Any]] = {}
+    for (
+        source_id,
+        first_date,
+        last_date,
+        active_days,
+        model_count,
+        total_tokens,
+        tokens_30d,
+        tokens_7d,
+        tokens_today,
+    ) in conn.execute(
+        "SELECT source_id, "
+        "       MIN(date), "
+        "       MAX(date), "
+        "       COUNT(DISTINCT date), "
+        "       COUNT(DISTINCT model_id), "
+        "       SUM(input_tokens + output_tokens + cache_read_tokens "
+        "           + cache_write_tokens + reasoning_tokens), "
+        "       SUM(CASE WHEN date >= ? THEN input_tokens + output_tokens "
+        "           + cache_read_tokens + cache_write_tokens + reasoning_tokens ELSE 0 END), "
+        "       SUM(CASE WHEN date >= ? THEN input_tokens + output_tokens "
+        "           + cache_read_tokens + cache_write_tokens + reasoning_tokens ELSE 0 END), "
+        "       SUM(CASE WHEN date = ? THEN input_tokens + output_tokens "
+        "           + cache_read_tokens + cache_write_tokens + reasoning_tokens ELSE 0 END) "
+        "FROM usage_point "
+        "GROUP BY source_id",
+        (start_30d, start_7d, today_str),
+    ):
+        stats_by_source[source_id] = {
+            "first_date": first_date,
+            "last_date": last_date,
+            "active_days": int(active_days or 0),
+            "model_count": int(model_count or 0),
+            "total_tokens": int(total_tokens or 0),
+            "tokens_30d": int(tokens_30d or 0),
+            "tokens_7d": int(tokens_7d or 0),
+            "tokens_today": int(tokens_today or 0),
+        }
+
+    aliases = alias_lookup or {}
+    models_by_source: dict[str, dict[str, int]] = {}
+    for source_id, model_id, total in conn.execute(
+        "SELECT source_id, model_id, "
+        "       SUM(input_tokens + output_tokens + cache_read_tokens "
+        "           + cache_write_tokens + reasoning_tokens) AS total "
+        "FROM usage_point "
+        "GROUP BY source_id, model_id "
+        "HAVING total > 0"
+    ):
+        canonical = aliases.get(model_id, model_id)
+        bucket = models_by_source.setdefault(source_id, {})
+        bucket[canonical] = bucket.get(canonical, 0) + int(total or 0)
+
+    enriched: list[tuple[tuple[int, float, str], dict[str, Any]]] = []
+    for (
+        source_id,
+        label,
+        last_seen,
+        frozen_before,
+        auth_valid,
+        last_auth_at,
+        stale_dismissed_at,
+        last_ip,
+    ) in source_rows:
+        seen_at = _parse_iso_dt(last_seen)
+        is_stale = (seen_at is not None) and ((ref - seen_at) > STALE_THRESHOLD)
+        stats = stats_by_source.get(source_id, {})
+        model_totals = models_by_source.get(source_id, {})
+        top_models = [
+            {"label": name, "tokens": tok}
+            for name, tok in sorted(
+                model_totals.items(), key=lambda kv: (-kv[1], kv[0])
+            )[:top_models_limit]
+        ]
+        item = {
+            "source_id": source_id,
+            "label": label,
+            "last_seen": last_seen,
+            "is_stale": is_stale,
+            "stale_dismissed": stale_dismissed_at is not None,
+            "stale_dismissed_at": stale_dismissed_at,
+            "auth_valid": bool(auth_valid),
+            "last_auth_at": last_auth_at,
+            "frozen_before": frozen_before,
+            "last_ip": last_ip,
+            "first_date": stats.get("first_date"),
+            "last_date": stats.get("last_date"),
+            "active_days": stats.get("active_days", 0),
+            "model_count": stats.get("model_count", 0),
+            "tokens_today": stats.get("tokens_today", 0),
+            "tokens_7d": stats.get("tokens_7d", 0),
+            "tokens_30d": stats.get("tokens_30d", 0),
+            "total_tokens": stats.get("total_tokens", 0),
+            "top_models": top_models,
+        }
+        sort_key = (0, -seen_at.timestamp(), source_id) if seen_at is not None else (1, 0.0, source_id)
+        enriched.append((sort_key, item))
+
+    enriched.sort(key=lambda pair: pair[0])
+    return [item for _, item in enriched]
 
 
 def get_source_auth_status(conn: sqlite3.Connection) -> list[dict]:

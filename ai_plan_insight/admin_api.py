@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import closing as _closing
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -302,6 +303,63 @@ async def get_sources():
     except Exception as e:
         logger.error("admin sources failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── usage reporting machines ──────────────────────────────────
+
+@protected.get("/usage-sources")
+async def list_usage_sources():
+    """Machines reporting model token usage via POST /api/usage/report."""
+    try:
+        with closing_conn() as conn:
+            aliases = config_store.get_aliases(conn)
+            alias_lookup = {
+                raw_id: label
+                for label, raw_ids in aliases.items()
+                for raw_id in raw_ids
+            }
+            sources = usage_store.list_usage_sources(conn, alias_lookup=alias_lookup)
+        return {
+            "stale_threshold_hours": int(
+                usage_store.STALE_THRESHOLD.total_seconds() // 3600
+            ),
+            "sources": sources,
+        }
+    except Exception as e:
+        logger.error("admin usage sources failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@protected.post("/usage-sources/{source_id}/dismiss-stale")
+async def dismiss_usage_source_stale(source_id: str):
+    """Silence the stale alert for a usage-reporting machine until it reports again."""
+    try:
+        with closing_conn() as conn:
+            found = usage_store.dismiss_stale_source(
+                conn, source_id, datetime.now().astimezone().isoformat()
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("admin dismiss stale source failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    if not found:
+        raise HTTPException(status_code=404, detail=f"上报来源 {source_id} 不存在")
+    return {"ok": True}
+
+
+@protected.post("/usage-sources/{source_id}/restore-stale")
+async def restore_usage_source_stale(source_id: str):
+    """Re-arm a previously silenced stale alert for a usage-reporting machine."""
+    try:
+        with closing_conn() as conn:
+            found = usage_store.restore_stale_source(conn, source_id)
+            conn.commit()
+    except Exception as e:
+        logger.error("admin restore stale source failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    if not found:
+        raise HTTPException(status_code=404, detail=f"上报来源 {source_id} 不存在")
+    return {"ok": True}
 
 
 # ── model aliases ─────────────────────────────────────────────

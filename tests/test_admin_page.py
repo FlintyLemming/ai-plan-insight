@@ -113,6 +113,31 @@ def read_index() -> str:
     return INDEX_HTML.read_text(encoding="utf-8")
 
 
+class TestUsageSourcesSection:
+    def test_panel_present_between_instances_and_aliases(self):
+        h = read_admin()
+        assert 'id="usage-sources-panel"' in h
+        assert "用量上报机器" in h
+        assert h.index('id="instances-panel"') < h.index('id="usage-sources-panel"') < h.index('id="aliases-panel"')
+
+    def test_table_headers_and_detail_drawer(self):
+        h = read_admin()
+        for header in ("机器", "状态", "推送认证", "最后上报", "近 30 天 / 累计 Token", "数据范围", "操作"):
+            assert header in h
+        assert "source-detail-row" in h
+        assert "最近上报 IP" in h
+        assert "历史冻结边界" in h
+        assert "常用模型" in h
+
+    def test_calls_usage_sources_and_stale_endpoints(self):
+        h = read_admin()
+        assert "/api/admin/usage-sources" in h
+        assert "/dismiss-stale" in h
+        assert "/restore-stale" in h
+        assert "loadUsageSources()" in h
+        assert 'id="usage-sources-refresh-btn"' in h
+
+
 class TestAliasesSection:
     def test_editor_present(self):
         h = read_admin()
@@ -177,11 +202,14 @@ class TestCollapsibleSections:
         assert "ai-plan-insight:admin-open-sections" in h
         assert "DEFAULT_OPEN_SECTIONS = ['instances-panel']" in h
         for section_id in (
-            "instances-panel", "aliases-panel", "prices-panel",
+            "instances-panel", "usage-sources-panel", "aliases-panel", "prices-panel",
             "push-auth-panel", "display-settings-panel", "password-panel", "io-panel",
         ):
             assert f'data-section="{section_id}"' in h
-        for badge_id in ("nav-badge-instances", "nav-badge-aliases", "nav-badge-prices"):
+        for badge_id in (
+            "nav-badge-instances", "nav-badge-usage-sources",
+            "nav-badge-aliases", "nav-badge-prices",
+        ):
             assert f'id="{badge_id}"' in h
 
 

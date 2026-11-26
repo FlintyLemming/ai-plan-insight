@@ -818,11 +818,107 @@
     background: var(--muted-soft);
   }
   .status-dot.on::before { background: var(--success); }
+  .status-dot.warn::before { background: var(--warning); }
+  .status-dot.err::before { background: var(--error); }
   tr.row-disabled td { opacity: 0.5; }
+  tr.row-warn td { background: var(--warning-soft); border-bottom-color: var(--warning-line); }
   tr.row-error td { background: var(--error-soft); border-bottom-color: var(--error-line); }
   .row-error-msg { color: var(--error); font-size: 12px; margin-top: 4px; }
   td.actions, th:last-child { text-align: right; white-space: nowrap; }
   td.actions .row { justify-content: flex-end; flex-wrap: nowrap; }
+
+  /* ---- Usage reporting machines detail drawer ---- */
+  tr.source-detail-row td {
+    background: var(--canvas-soft);
+    padding: 16px 16px 18px;
+    white-space: normal;
+    border-bottom: 1px solid var(--hairline);
+  }
+  tr.source-detail-row:hover td { background: var(--canvas-soft); }
+  .source-detail-box {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .source-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .source-metric {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--rounded-md);
+    padding: 10px 12px;
+  }
+  .source-metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: var(--muted);
+  }
+  .source-metric-val {
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .source-metric-raw {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .source-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px 20px;
+  }
+  .source-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .source-meta-key {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .source-meta-val {
+    font-size: 13px;
+    color: var(--ink);
+    word-break: break-all;
+  }
+  .source-top-models {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .source-top-models-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .source-model-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border-radius: var(--rounded-pill);
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .source-model-chip .mono {
+    font-size: 11px;
+    color: var(--muted);
+  }
 
   /* ---- Modal ---- */
   .backdrop {
@@ -897,6 +993,8 @@
     .prices-more-bar { padding: 8px 24px; }
     th:first-child, td:first-child { padding-left: 24px; }
     th:last-child, td:last-child { padding-right: 24px; }
+    tr.source-detail-row td { padding: 16px 24px 18px; }
+    .source-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .panel-split { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
     .login-card { margin-top: 96px; padding: 40px 32px 32px; }
   }
@@ -1000,6 +1098,7 @@
         <div class="section-nav-group">
           <div class="section-nav-label">数据源</div>
           <a href="#instances-panel"><span>订阅实例</span><span class="nav-badge" id="nav-badge-instances"></span></a>
+          <a href="#usage-sources-panel"><span>用量上报机器</span><span class="nav-badge" id="nav-badge-usage-sources"></span></a>
         </div>
         <div class="section-nav-group">
           <div class="section-nav-label">模型</div>
@@ -1047,6 +1146,50 @@
               <p class="muted panel-empty" id="instances-empty" style="display:none;">
                 还没有实例，点「新建实例」添加一个。
               </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="usage-sources-panel" data-section="usage-sources-panel">
+          <div class="panel">
+            <div class="panel-head">
+              <button type="button" class="panel-toggle" aria-expanded="false" aria-controls="usage-sources-content">
+                <span class="panel-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.25L8 9.75l3.5-3.5"/></svg></span>
+                <span class="panel-heading">
+                  <span class="panel-title-row"><h2>用量上报机器</h2></span>
+                  <span class="panel-summary" id="summary-usage-sources">加载中…</span>
+                </span>
+              </button>
+              <div class="panel-head-actions">
+                <button id="usage-sources-refresh-btn" type="button">刷新</button>
+              </div>
+            </div>
+            <div class="panel-collapse" id="usage-sources-content" hidden>
+              <div class="panel-intro">
+                <p class="section-desc">
+                  通过 <code>POST /api/usage/report</code> 上报模型 Token 用量的设备列表（不含订阅卡片推送源）。超过 24 小时未上报会触发离线告警，点「详情」可查看分时段 Token、最近 IP、历史冻结边界与常用模型。
+                </p>
+              </div>
+              <div class="table-scroll">
+                <table id="usage-sources-table">
+                  <thead>
+                    <tr>
+                      <th>机器</th>
+                      <th>状态</th>
+                      <th>推送认证</th>
+                      <th>最后上报</th>
+                      <th>近 30 天 / 累计 Token</th>
+                      <th>数据范围</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="usage-sources-body"></tbody>
+                </table>
+              </div>
+              <p class="muted panel-empty" id="usage-sources-empty" style="display:none;">
+                还没有收到任何机器的用量上报。配置 <code>ai-usage-agent</code> 指向 <code>POST /api/usage/report</code> 后会自动出现在这里。
+              </p>
+              <p class="error panel-empty" id="usage-sources-error" style="display:none;"></p>
             </div>
           </div>
         </section>
@@ -1475,6 +1618,7 @@ async function boot() {
 
 async function loadAllSections() {
   await loadInstances();
+  await loadUsageSources();
   await loadAliases();
   await loadPrices();
   await loadPushAuth();
@@ -1798,6 +1942,326 @@ document.getElementById('modal-test-btn').addEventListener('click', testConnecti
 document.getElementById('modal-type').addEventListener('change', () => onTypeChanged(null));
 document.getElementById('modal-mode').addEventListener('change', renderCredentialFields);
 
+// ── usage reporting machines ───────────────────────────────
+
+let USAGE_SOURCES = [];
+let USAGE_STALE_HOURS = 24;
+let EXPANDED_USAGE_SOURCES = new Set();
+
+function formatCompactTokens(n) {
+  const num = Number(n || 0);
+  if (!num) return '0';
+  if (num >= 1e9) return (num / 1e9).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' B';
+  if (num >= 1e6) return (num / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' M';
+  if (num >= 1e3) return (num / 1e3).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' K';
+  return num.toLocaleString('en-US');
+}
+
+function formatDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  const pad = v => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatRelativeTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '时间异常';
+  const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (diffSec < 60) return '刚刚';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
+  return `${Math.floor(diffSec / 86400)} 天前`;
+}
+
+function silentDaysSince(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 1;
+  return Math.max(1, Math.floor((Date.now() - d.getTime()) / 86400000));
+}
+
+function updateUsageSourcesSummary(loadError) {
+  const summary = document.getElementById('summary-usage-sources');
+  const badge = document.getElementById('nav-badge-usage-sources');
+  if (loadError) {
+    if (summary) summary.innerHTML = `<span class="summary-pill error">加载失败</span>`;
+    if (badge) { badge.className = 'nav-badge is-error'; badge.textContent = '!'; badge.title = loadError; }
+    return;
+  }
+  const total = USAGE_SOURCES.length;
+  const online = USAGE_SOURCES.filter(s => !s.is_stale).length;
+  const staleActive = USAGE_SOURCES.filter(s => s.is_stale && !s.stale_dismissed).length;
+  const staleDismissed = USAGE_SOURCES.filter(s => s.is_stale && s.stale_dismissed).length;
+  const authFailed = USAGE_SOURCES.filter(s => s.last_auth_at && !s.auth_valid).length;
+
+  if (summary) {
+    if (!total) {
+      summary.textContent = '暂无上报机器';
+    } else {
+      const parts = [`${online} 台正常`];
+      if (staleDismissed) parts.push(`${staleDismissed} 台已静默`);
+      let html = esc(parts.join(' · '));
+      if (staleActive) html += ` <span class="summary-pill warn">${staleActive} 台离线</span>`;
+      if (authFailed) html += ` <span class="summary-pill error">${authFailed} 台未认证</span>`;
+      summary.innerHTML = html;
+    }
+  }
+  if (badge) {
+    badge.className = 'nav-badge';
+    if (authFailed > 0) {
+      badge.classList.add('is-error');
+      badge.textContent = `${authFailed}`;
+      badge.title = `${authFailed} 台机器推送认证未通过`;
+    } else if (staleActive > 0) {
+      badge.classList.add('is-warn');
+      badge.textContent = `${staleActive}`;
+      badge.title = `${staleActive} 台机器超过 ${USAGE_STALE_HOURS} 小时未上报`;
+    } else if (total > 0) {
+      badge.textContent = `${total}`;
+      badge.title = `共 ${total} 台上报机器`;
+    } else {
+      badge.textContent = '';
+      badge.title = '';
+    }
+  }
+}
+
+async function loadUsageSources() {
+  const errEl = document.getElementById('usage-sources-error');
+  const refreshBtn = document.getElementById('usage-sources-refresh-btn');
+  if (refreshBtn) refreshBtn.disabled = true;
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  try {
+    const data = await api('/api/admin/usage-sources');
+    USAGE_STALE_HOURS = Number(data.stale_threshold_hours || 24);
+    USAGE_SOURCES = Array.isArray(data.sources) ? data.sources : [];
+    const existingIds = new Set(USAGE_SOURCES.map(s => s.source_id));
+    EXPANDED_USAGE_SOURCES.forEach(id => {
+      if (!existingIds.has(id)) EXPANDED_USAGE_SOURCES.delete(id);
+    });
+    renderUsageSources();
+    updateUsageSourcesSummary(null);
+  } catch (e) {
+    USAGE_SOURCES = [];
+    document.getElementById('usage-sources-table').style.display = 'none';
+    document.getElementById('usage-sources-empty').style.display = 'none';
+    if (errEl) {
+      errEl.textContent = `加载上报机器失败：${e.message}`;
+      errEl.style.display = 'block';
+    }
+    updateUsageSourcesSummary(e.message);
+  } finally {
+    if (refreshBtn) refreshBtn.disabled = false;
+  }
+}
+
+function renderUsageSourceDetailRow(s) {
+  const authDetail = !s.last_auth_at
+    ? '未记录'
+    : `${s.auth_valid ? '已通过' : '未通过'}（${formatDateTime(s.last_auth_at)}）`;
+  const freezeDetail = s.frozen_before
+    ? `${s.frozen_before} 之前已冻结`
+    : '未设置冻结边界';
+  const dismissDetail = s.stale_dismissed_at
+    ? `已静默（${formatDateTime(s.stale_dismissed_at)}）`
+    : '未静默';
+  const modelsHtml = (s.top_models && s.top_models.length)
+    ? s.top_models.map(m =>
+        `<span class="source-model-chip"><span>${esc(m.label)}</span><span class="mono">${esc(formatCompactTokens(m.tokens))}</span></span>`
+      ).join('')
+    : '<span class="muted">暂无模型用量记录</span>';
+
+  return `<tr class="source-detail-row" data-source-detail-row="${esc(s.source_id)}">
+    <td colspan="7">
+      <div class="source-detail-box">
+        <div class="source-metrics">
+          <div class="source-metric">
+            <div class="source-metric-label">今日 Token</div>
+            <div class="source-metric-val">${esc(formatCompactTokens(s.tokens_today))}</div>
+            <div class="source-metric-raw">${Number(s.tokens_today || 0).toLocaleString('en-US')}</div>
+          </div>
+          <div class="source-metric">
+            <div class="source-metric-label">近 7 天 Token</div>
+            <div class="source-metric-val">${esc(formatCompactTokens(s.tokens_7d))}</div>
+            <div class="source-metric-raw">${Number(s.tokens_7d || 0).toLocaleString('en-US')}</div>
+          </div>
+          <div class="source-metric">
+            <div class="source-metric-label">近 30 天 Token</div>
+            <div class="source-metric-val">${esc(formatCompactTokens(s.tokens_30d))}</div>
+            <div class="source-metric-raw">${Number(s.tokens_30d || 0).toLocaleString('en-US')}</div>
+          </div>
+          <div class="source-metric">
+            <div class="source-metric-label">累计总 Token</div>
+            <div class="source-metric-val">${esc(formatCompactTokens(s.total_tokens))}</div>
+            <div class="source-metric-raw">${Number(s.total_tokens || 0).toLocaleString('en-US')}</div>
+          </div>
+        </div>
+        <div class="source-meta-grid">
+          <div class="source-meta-item">
+            <span class="source-meta-key">Source ID</span>
+            <span class="source-meta-val mono">${esc(s.source_id)}</span>
+          </div>
+          <div class="source-meta-item">
+            <span class="source-meta-key">显示名称</span>
+            <span class="source-meta-val">${esc(s.label || '未设置')}</span>
+          </div>
+          <div class="source-meta-item">
+            <span class="source-meta-key">最近上报 IP</span>
+            <span class="source-meta-val mono">${esc(s.last_ip || '未记录')}</span>
+          </div>
+          <div class="source-meta-item">
+            <span class="source-meta-key">最后上报时间</span>
+            <span class="source-meta-val mono">${esc(formatDateTime(s.last_seen))}</span>
+          </div>
+          <div class="source-meta-item">
+            <span class="source-meta-key">推送认证</span>
+            <span class="source-meta-val">${esc(authDetail)}</span>
+          </div>
+          <div class="source-meta-item">
+            <span class="source-meta-key">历史冻结边界</span>
+            <span class="source-meta-val mono">${esc(freezeDetail)}</span>
+          </div>
+          <div class="source-meta-item">
+            <span class="source-meta-key">离线告警状态</span>
+            <span class="source-meta-val">${esc(dismissDetail)}</span>
+          </div>
+        </div>
+        <div class="source-top-models">
+          <span class="source-top-models-label">常用模型（累计 Top ${Math.max(s.top_models ? s.top_models.length : 0, 5)}）：</span>
+          ${modelsHtml}
+        </div>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function renderUsageSources() {
+  const table = document.getElementById('usage-sources-table');
+  const body = document.getElementById('usage-sources-body');
+  const empty = document.getElementById('usage-sources-empty');
+  if (!USAGE_SOURCES.length) {
+    body.innerHTML = '';
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  body.innerHTML = USAGE_SOURCES.map(s => {
+    const expanded = EXPANDED_USAGE_SOURCES.has(s.source_id);
+    const displayName = s.label || s.source_id;
+    const idSub = s.last_ip ? `${s.source_id} · ${s.last_ip}` : s.source_id;
+    const rowClass = (s.is_stale && !s.stale_dismissed) ? 'row-warn' : '';
+
+    let statusHtml;
+    if (!s.is_stale) {
+      statusHtml = '<span class="status-dot on">正常</span>';
+    } else if (s.stale_dismissed) {
+      statusHtml = `<span class="status-dot" title="已于 ${esc(formatDateTime(s.stale_dismissed_at))} 静默">离线（已静默）</span>`;
+    } else {
+      statusHtml = `<span class="status-dot warn">离线 ${silentDaysSince(s.last_seen)} 天</span>`;
+    }
+
+    let authHtml;
+    if (!s.last_auth_at) {
+      authHtml = '<span class="muted">未记录</span>';
+    } else if (s.auth_valid) {
+      authHtml = `<span class="status-dot on" title="最后认证：${esc(formatDateTime(s.last_auth_at))}">已认证</span>`;
+    } else {
+      authHtml = `<span class="status-dot err" title="最后认证：${esc(formatDateTime(s.last_auth_at))}">未认证</span>`;
+    }
+
+    const tokenTitle = `今日 ${Number(s.tokens_today || 0).toLocaleString('en-US')} / 近 7 天 ${Number(s.tokens_7d || 0).toLocaleString('en-US')} / 近 30 天 ${Number(s.tokens_30d || 0).toLocaleString('en-US')} / 累计 ${Number(s.total_tokens || 0).toLocaleString('en-US')}`;
+    const rangeHtml = s.active_days > 0
+      ? `<div class="mono">${esc(s.first_date === s.last_date ? s.first_date : `${s.first_date} ~ ${s.last_date}`)}</div>
+         <div class="inst-id">${s.active_days} 天 · ${s.model_count} 个模型</div>`
+      : '<span class="muted">暂无用量数据</span>';
+
+    const alertAction = s.stale_dismissed
+      ? `<button type="button" class="link" data-source-restore="${esc(s.source_id)}">恢复告警</button>`
+      : (s.is_stale
+        ? `<button type="button" class="link subtle" data-source-dismiss="${esc(s.source_id)}">静默告警</button>`
+        : '');
+
+    const mainRow = `<tr class="${rowClass}" data-usage-source="${esc(s.source_id)}">
+      <td>
+        <div class="inst-label">${esc(displayName)}</div>
+        <div class="inst-id">${esc(idSub)}</div>
+      </td>
+      <td>${statusHtml}</td>
+      <td>${authHtml}</td>
+      <td>
+        <div>${esc(formatRelativeTime(s.last_seen))}</div>
+        <div class="inst-id">${esc(formatDateTime(s.last_seen))}</div>
+      </td>
+      <td title="${esc(tokenTitle)}">
+        <div class="mono">${esc(formatCompactTokens(s.tokens_30d))}</div>
+        <div class="inst-id">累计 ${esc(formatCompactTokens(s.total_tokens))}</div>
+      </td>
+      <td>${rangeHtml}</td>
+      <td class="actions"><div class="row">
+        <button type="button" class="link" data-source-detail="${esc(s.source_id)}">${expanded ? '收起' : '详情'}</button>
+        ${alertAction}
+      </div></td>
+    </tr>`;
+    return expanded ? mainRow + renderUsageSourceDetailRow(s) : mainRow;
+  }).join('');
+
+  body.querySelectorAll('[data-source-detail]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.sourceDetail;
+      if (EXPANDED_USAGE_SOURCES.has(id)) EXPANDED_USAGE_SOURCES.delete(id);
+      else EXPANDED_USAGE_SOURCES.add(id);
+      renderUsageSources();
+    });
+  });
+  body.querySelectorAll('[data-source-dismiss]').forEach(btn => {
+    btn.addEventListener('click', () => dismissUsageSourceStale(btn.dataset.sourceDismiss, btn));
+  });
+  body.querySelectorAll('[data-source-restore]').forEach(btn => {
+    btn.addEventListener('click', () => restoreUsageSourceStale(btn.dataset.sourceRestore, btn));
+  });
+}
+
+async function dismissUsageSourceStale(sourceId, btn) {
+  const errEl = document.getElementById('usage-sources-error');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  if (btn) btn.disabled = true;
+  try {
+    await api(`/api/admin/usage-sources/${encodeURIComponent(sourceId)}/dismiss-stale`, {
+      method: 'POST',
+    });
+    await loadUsageSources();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    if (errEl) {
+      errEl.textContent = `静默告警失败：${e.message}`;
+      errEl.style.display = 'block';
+    }
+  }
+}
+
+async function restoreUsageSourceStale(sourceId, btn) {
+  const errEl = document.getElementById('usage-sources-error');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  if (btn) btn.disabled = true;
+  try {
+    await api(`/api/admin/usage-sources/${encodeURIComponent(sourceId)}/restore-stale`, {
+      method: 'POST',
+    });
+    await loadUsageSources();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    if (errEl) {
+      errEl.textContent = `恢复告警失败：${e.message}`;
+      errEl.style.display = 'block';
+    }
+  }
+}
+
 // ── model aliases ──────────────────────────────────────────
 
 let ALIASES = {};
@@ -1876,6 +2340,7 @@ async function saveAliases() {
   status.className = 'ok';
   status.textContent = '已保存';
   await loadAliases();
+  await loadUsageSources();
 }
 
 // ── model prices ───────────────────────────────────────────
@@ -2481,6 +2946,7 @@ async function doImport() {
   await loadAllSections();
 }
 
+document.getElementById('usage-sources-refresh-btn').addEventListener('click', loadUsageSources);
 document.getElementById('alias-add-btn').addEventListener('click', () => {
   ALIASES = collectAliases();
   ALIASES[''] = [];
@@ -2524,7 +2990,7 @@ document.getElementById('import-btn').addEventListener('click', doImport);
 
 const SECTION_STORAGE_KEY = 'ai-plan-insight:admin-open-sections';
 const ALL_SECTION_IDS = [
-  'instances-panel', 'aliases-panel', 'prices-panel',
+  'instances-panel', 'usage-sources-panel', 'aliases-panel', 'prices-panel',
   'push-auth-panel', 'display-settings-panel', 'password-panel', 'io-panel',
 ];
 const DEFAULT_OPEN_SECTIONS = ['instances-panel'];

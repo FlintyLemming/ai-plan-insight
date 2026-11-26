@@ -441,3 +441,125 @@ def test_list_raw_model_usage_empty_db(tmp_path):
     conn = _connect(tmp_path)
     assert usage_store.list_raw_model_usage(conn, 90) == []
     conn.close()
+
+
+def test_init_schema_adds_last_ip_column_to_old_source_table(tmp_path):
+    db = tmp_path / "old_ip.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE source (source_id TEXT PRIMARY KEY, label TEXT, last_seen TEXT)"
+    )
+    conn.execute("INSERT INTO source VALUES ('m1', 'old', '2026-01-01T00:00:00+08:00')")
+    conn.commit()
+    usage_store.init_schema(conn)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(source)")}
+    assert "last_ip" in cols
+    assert conn.execute(
+        "SELECT last_ip FROM source WHERE source_id = 'm1'"
+    ).fetchone()[0] is None
+    conn.close()
+
+
+def test_upsert_records_and_preserves_last_ip(tmp_path):
+    conn = _connect(tmp_path)
+    usage_store.upsert_points(conn, "m1", "Laptop", [], last_ip="192.168.1.10")
+    assert conn.execute("SELECT last_ip FROM source WHERE source_id='m1'").fetchone()[0] == "192.168.1.10"
+    # None keeps existing IP
+    usage_store.upsert_points(conn, "m1", None, [], last_ip=None)
+    assert conn.execute("SELECT last_ip FROM source WHERE source_id='m1'").fetchone()[0] == "192.168.1.10"
+    # New IP updates it
+    usage_store.upsert_points(conn, "m1", None, [], last_ip="10.0.0.5")
+    assert conn.execute("SELECT last_ip FROM source WHERE source_id='m1'").fetchone()[0] == "10.0.0.5"
+    conn.close()
+
+
+def test_restore_stale_source_clears_dismissed_flag(tmp_path):
+    conn = _connect(tmp_path)
+    now = datetime(2026, 7, 15, 12, 0, 0, tzinfo=UTC8)
+    usage_store.upsert_points(
+        conn, "dev-a", "Dev A", [], now=(now - timedelta(days=3)).isoformat()
+    )
+    assert usage_store.dismiss_stale_source(conn, "dev-a", now.isoformat()) is True
+    assert usage_store.get_stale_sources(conn, now=now) == []
+    assert usage_store.restore_stale_source(conn, "dev-a") is True
+    assert [s["source_id"] for s in usage_store.get_stale_sources(conn, now=now)] == ["dev-a"]
+    assert usage_store.restore_stale_source(conn, "ghost") is False
+    conn.close()
+
+
+def test_list_usage_sources_excludes_stubs_and_computes_stats(tmp_path):
+    conn = _connect(tmp_path)
+    ref = datetime(2026, 7, 30, 12, 0, 0, tzinfo=UTC8)
+    today = ref.date().isoformat()
+    d5 = (ref.date() - timedelta(days=5)).isoformat()
+    d20 = (ref.date() - timedelta(days=20)).isoformat()
+    d40 = (ref.date() - timedelta(days=40)).isoformat()
+
+    # Push-card stub row (last_seen IS NULL) must be excluded.
+    conn.execute("INSERT INTO source (source_id, auth_valid) VALUES ('claude-card', 1)")
+
+    # Active machine with usage across today, 7d, 30d, and >30d
+    usage_store.upsert_points(
+        conn, "macbook", "MacBook Pro",
+        [
+            {"date": d40, "model_id": "glm-5.2", "input_tokens": 1000, "output_tokens": 500},
+            {"date": d20, "model_id": "z-ai/glm-5.2", "input_tokens": 200, "output_tokens": 100,
+             "cache_read_tokens": 50, "cache_write_tokens": 25, "reasoning_tokens": 25},
+            {"date": d5, "model_id": "claude-sonnet", "input_tokens": 300, "output_tokens": 200},
+            {"date": today, "model_id": "glm-5.2", "input_tokens": 60, "output_tokens": 40},
+        ],
+        reported_at=today,
+        now=(ref - timedelta(minutes=10)).isoformat(),
+        last_ip="192.168.1.20",
+    )
+    usage_store.update_source_auth(conn, "macbook", True, (ref - timedelta(minutes=10)).isoformat())
+
+    # Stale & dismissed machine with zero points
+    usage_store.upsert_points(
+        conn, "old-box", "Old Box", [],
+        now=(ref - timedelta(hours=36)).isoformat(),
+        last_ip="10.0.0.2",
+    )
+    usage_store.update_source_auth(conn, "old-box", False, (ref - timedelta(hours=36)).isoformat())
+    usage_store.dismiss_stale_source(conn, "old-box", (ref - timedelta(hours=1)).isoformat())
+
+    # Malformed last_seen row should not crash and sorts last
+    conn.execute("INSERT INTO source (source_id, last_seen) VALUES ('bad-ts', 'not-a-date')")
+    conn.commit()
+
+    aliases = {"glm-5.2": "GLM 5.2", "z-ai/glm-5.2": "GLM 5.2"}
+    rows = usage_store.list_usage_sources(conn, alias_lookup=aliases, now=ref)
+    assert [r["source_id"] for r in rows] == ["macbook", "old-box", "bad-ts"]
+
+    mac = rows[0]
+    assert mac["label"] == "MacBook Pro"
+    assert mac["is_stale"] is False
+    assert mac["stale_dismissed"] is False
+    assert mac["auth_valid"] is True
+    assert mac["last_ip"] == "192.168.1.20"
+    assert mac["first_date"] == d40
+    assert mac["last_date"] == today
+    assert mac["active_days"] == 4
+    assert mac["model_count"] == 3  # raw distinct model_ids
+    assert mac["tokens_today"] == 100
+    assert mac["tokens_7d"] == 600   # today (100) + d5 (500)
+    assert mac["tokens_30d"] == 1000  # today (100) + d5 (500) + d20 (400)
+    assert mac["total_tokens"] == 2500  # + d40 (1500)
+    # Alias collapses glm-5.2 (1500+100) + z-ai/glm-5.2 (400) = 2000
+    assert mac["top_models"] == [
+        {"label": "GLM 5.2", "tokens": 2000},
+        {"label": "claude-sonnet", "tokens": 500},
+    ]
+
+    old = rows[1]
+    assert old["is_stale"] is True
+    assert old["stale_dismissed"] is True
+    assert old["stale_dismissed_at"] is not None
+    assert old["auth_valid"] is False
+    assert old["active_days"] == 0
+    assert old["first_date"] is None
+    assert old["top_models"] == []
+
+    bad = rows[2]
+    assert bad["is_stale"] is False
+    conn.close()

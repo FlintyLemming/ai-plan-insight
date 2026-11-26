@@ -132,6 +132,9 @@ class TestAuthGate:
         ("post", "/api/admin/logout-all"),
         ("post", "/api/admin/password"),
         ("get", "/api/admin/sources"),
+        ("get", "/api/admin/usage-sources"),
+        ("post", "/api/admin/usage-sources/m1/dismiss-stale"),
+        ("post", "/api/admin/usage-sources/m1/restore-stale"),
     ])
     def test_requires_login(self, client, method, path):
         # httpx's get/delete take no body, so only send one where it is legal.
@@ -373,6 +376,78 @@ class TestDeleteInstance:
 class TestSources:
     def test_returns_auth_status_when_logged_in(self, admin):
         assert admin.get("/api/admin/sources").status_code == 200
+
+
+class TestUsageSources:
+    def test_empty_and_excludes_push_card_stubs(self, admin, db):
+        with closing(sqlite3.connect(db)) as conn:
+            conn.execute("INSERT INTO source (source_id, auth_valid) VALUES ('claude-x', 1)")
+            conn.commit()
+        data = admin.get("/api/admin/usage-sources").json()
+        assert data["stale_threshold_hours"] == 24
+        assert data["sources"] == []
+
+    def test_lists_reporting_machines_with_ip_stats_and_aliases(self, admin, db):
+        admin.put("/api/admin/aliases", json={"model_aliases": {"GLM 5.2": ["glm-5.2", "z-ai/glm-5.2"]}})
+        today = datetime.now(UTC8).date().isoformat()
+        resp = admin.post(
+            "/api/usage/report",
+            json={
+                "source_id": "workstation-1",
+                "source_label": "开发机",
+                "reported_at": today,
+                "points": [
+                    {"date": today, "model_id": "glm-5.2", "input_tokens": 1000, "output_tokens": 500},
+                    {"date": today, "model_id": "z-ai/glm-5.2", "input_tokens": 300, "output_tokens": 200},
+                ],
+            },
+            headers={
+                "Authorization": "Bearer s3cret-token",
+                "X-Forwarded-For": "203.0.113.42, 10.0.0.1",
+            },
+        )
+        assert resp.status_code == 200
+
+        body = admin.get("/api/admin/usage-sources").json()
+        assert len(body["sources"]) == 1
+        src = body["sources"][0]
+        assert src["source_id"] == "workstation-1"
+        assert src["label"] == "开发机"
+        assert src["is_stale"] is False
+        assert src["auth_valid"] is True
+        assert src["last_ip"] == "203.0.113.42"
+        assert src["frozen_before"] == today
+        assert src["active_days"] == 1
+        assert src["model_count"] == 2
+        assert src["tokens_today"] == 2000
+        assert src["tokens_30d"] == 2000
+        assert src["total_tokens"] == 2000
+        assert src["top_models"] == [{"label": "GLM 5.2", "tokens": 2000}]
+
+    def test_dismiss_and_restore_stale_endpoints(self, admin, db):
+        stale_at = (datetime.now(UTC8) - timedelta(hours=30)).isoformat()
+        with closing(sqlite3.connect(db)) as conn:
+            usage_store.upsert_points(conn, "dev-offline", "离线机", [], now=stale_at)
+            conn.commit()
+
+        assert admin.get("/api/admin/usage-sources").json()["sources"][0]["is_stale"] is True
+        assert admin.get("/api/admin/usage-sources").json()["sources"][0]["stale_dismissed"] is False
+
+        assert admin.post("/api/admin/usage-sources/dev-offline/dismiss-stale").status_code == 200
+        src = admin.get("/api/admin/usage-sources").json()["sources"][0]
+        assert src["stale_dismissed"] is True
+        assert src["stale_dismissed_at"] is not None
+        assert admin.get("/api/sources/stale").json() == []
+
+        assert admin.post("/api/admin/usage-sources/dev-offline/restore-stale").status_code == 200
+        src = admin.get("/api/admin/usage-sources").json()["sources"][0]
+        assert src["stale_dismissed"] is False
+        assert src["stale_dismissed_at"] is None
+        assert [s["source_id"] for s in admin.get("/api/sources/stale").json()] == ["dev-offline"]
+
+    def test_dismiss_and_restore_unknown_source_return_404(self, admin):
+        assert admin.post("/api/admin/usage-sources/ghost/dismiss-stale").status_code == 404
+        assert admin.post("/api/admin/usage-sources/ghost/restore-stale").status_code == 404
 
 
 class TestAliases:

@@ -103,6 +103,7 @@ docker compose up -d
 访问 `http://<host>:<port>/admin`，用 `ADMIN_PASSWORD` 登录后即可维护全部配置，不需要 SSH 到服务器改文件。管理页包含：
 
 - **订阅实例**：新建 / 编辑 / 删除实例，调整排序与启用状态。新建时先选类型，页面会显示该类型的用途说明、支持的模式、以及每个凭据字段的中文标签与获取指引；保存前可以点「测试连接」实际拉一次。
+- **用量上报机器**：查看所有通过 `POST /api/usage/report` 上报 Token 用量的设备在线状态、推送认证、最后上报时间、最近 IP、分时段 Token 统计、历史冻结边界及常用模型，并可直接静默或恢复离线告警。
 - **模型别名**：把不同来源上报的原始模型 ID 归并到同一个展示名。
 - **模型价格**：给上游查不到价的模型手工填单价（USD / 百万 Token），保存后立即生效。
 - **推送认证**：`push_auth_secret` 与 `enforce_push_auth`，可一键生成随机 token。
@@ -176,6 +177,7 @@ Web 模式下提供以下接口。
 - `GET /api/sources/stale` — 列出超过 24 小时未上报的推送来源（Agent 存活告警）
 - `POST /api/sources/{source_id}/dismiss-stale` — 关闭某个来源的告警，直到它再次上报
 - `GET /api/admin/sources` — 返回各推送来源的认证状态（需登录）
+- `GET /api/admin/usage-sources` — 返回各用量上报机器的状态、认证、最近 IP 与统计明细（需登录）
 
 管理接口：`/api/admin/*` 全部需要登录（`GET /api/admin/session` 与 `POST /api/admin/login` 除外）。`GET /api/notices` 与 `POST /api/notices/migration/dismiss` 是公开的只读提示接口，不含任何凭据。只读看板与两个推送接口的鉴权方式没有变化。
 
